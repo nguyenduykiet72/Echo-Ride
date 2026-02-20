@@ -1,0 +1,72 @@
+services:
+  etcd:
+    image: bitnamilegacy/etcd:3.5.11
+    container_name: echoRide-etcd
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_ADVERTISE_CLIENT_URLS=http://0.0.0.0:2379
+    ports:
+      - "2379:2379"
+    networks:
+      - echoride_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD","etcdctl","endpoint","health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  apisix:
+    image: apache/apisix:3.15.0-debian
+    container_name: echoRide-apigateway
+    restart: always
+    depends_on:
+      etcd:
+        condition: service_healthy
+    volumes:
+      - ./apisix_conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro,z
+    ports:
+      - "9080:9080"
+      - "9180:9180"
+      - "9091:9091" # Prometheus metrics
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Local dev only
+    networks:
+      - echoride_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:9080/ || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  apisix-dashboard:
+    image: apache/apisix-dashboard:3.0.1-alpine
+    container_name: echoRide-apisix-dashboard
+    restart: always
+    depends_on:
+      apisix:
+        condition: service_healthy
+    volumes:
+      - ./dashboard_conf/config.yaml:/usr/local/apisix-dashboard/conf/conf.yaml:ro,z
+    ports:
+      - "9000:9000"
+    networks:
+      - echoride_network
+
+networks:
+  echoride_network:
+    driver: bridge

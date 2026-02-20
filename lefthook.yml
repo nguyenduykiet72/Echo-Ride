@@ -1,0 +1,23 @@
+pre-commit:
+  parallel: false
+  commands:
+    tidy:
+      files: git diff --cached --name-only HEAD
+      glob: "go.mod, go.sum"
+      run: go mod tidy && git add go.mod go.sum
+    format:
+      glob: "*.go"
+      run: goimports -w {staged_files} && git add {staged_files}
+    lint:
+      glob: "*.go"
+      run: golangci-lint run --new-from-rev HEAD ./...
+
+commit-msg:
+  commands:
+    validate-message:
+      run: |
+        head -n1 {1} | grep -E "^(feat|fix|docs|style|refactor|perf|test|chore|revert)\(GER-[0-9]+\): .+$"
+      errorMessage: |
+        Wrong commit message format.
+        Please use the Conventional Commits format:
+        <type>(<scope>): <subject>
