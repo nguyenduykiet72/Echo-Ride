@@ -1,6 +1,9 @@
 go 1.25.7
 
 use (
-	./services/trip-service
-	./shared
+	./pkg
+	./services/auth-service
+	./services/location-service
+	./services/payment-service
+	./services/ride-service
 )

@@ -1,14 +1,14 @@
 apiVersion: apisix.apache.org/v2
 kind: ApisixRoute
 metadata:
-  name: trip-service-route
+  name: ride-service-route
 spec:
   http:
     - name: preview-route
       match:
         paths:
-          - "/trip/preview"
+          - "/ride/preview"
         methods: ["POST"]
       backends:
-        - serviceName: trip-service
+        - serviceName: ride-service
           servicePort: 8083
