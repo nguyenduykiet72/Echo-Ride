@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"echo-ride/pkg/response"
 	"echo-ride/services/ride-service/config"
-	"echo-ride/services/ride-service/internal/application"
 	"echo-ride/services/ride-service/internal/infrastructure/db"
-	"echo-ride/services/ride-service/internal/infrastructure/repository"
-	rideHttp "echo-ride/services/ride-service/internal/presentation/http"
+	"echo-ride/services/ride-service/internal/infrastructure/outbox"
 	"echo-ride/services/ride-service/pkg/logger"
 	"errors"
 	"fmt"
@@ -17,19 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-playground/validator/v10"
-	"github.com/labstack/echo/v5"
-	"github.com/labstack/echo/v5/middleware"
 	"go.uber.org/zap"
 )
-
-type customValidator struct {
-	v *validator.Validate
-}
-
-func (cv *customValidator) Validate(i interface{}) error {
-	return cv.v.Struct(i)
-}
 
 func main() {
 	cfg, err := config.Load()
@@ -52,20 +38,12 @@ func main() {
 	defer dbPool.Close()
 	log.Info("Database connection successful")
 
-	e := echo.New()
-	e.Validator = &customValidator{v: validator.New()}
-	e.Use(middleware.Recover(), middleware.RequestID())
-	e.HTTPErrorHandler = response.CustomHTTPErrorHandler(log)
+	// Start the HTTP server
+	e := newServer(dbPool, log)
 
-	e.GET("/health", func(c *echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{"status": "ok", "service": "ride-service"})
-	})
-
-	rideRepo := repository.NewRideRepository(dbPool)
-	createRideUC := application.NewCreateRideUseCase(rideRepo)
-	updateRideUC := application.NewUdpateRideUseCase(rideRepo)
-	getRideUC := application.NewGetRideUseCase(rideRepo)
-	rideHttp.NewRideHander(e, createRideUC, updateRideUC, getRideUC)
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	relayWorker := outbox.NewRelayWorker(dbPool, cfg.Kafka.Brokers, cfg.Kafka.Topic, log)
+	go relayWorker.Start(workerCtx)
 
 	srvAddr := fmt.Sprintf(":%s", cfg.Server.Port)
 
@@ -83,10 +61,12 @@ func main() {
 	<-quit // Wait for shutdown signal
 	log.Info("Shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	cancelWorker()
 
-	if err := s.Shutdown(ctx); err != nil {
+	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelShutdown()
+
+	if err := s.Shutdown(ctxShutdown); err != nil {
 		log.Fatal("Server forced to shutdown", zap.Error(err))
 	}
 

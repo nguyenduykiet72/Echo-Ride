@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Server   ServerConfig `yaml:"server"`
 	Database DBConfig     `yaml:"database"`
+	Kafka    KafkaConfig  `yaml:"kafka"`
 }
 
 type ServerConfig struct {
@@ -26,6 +27,11 @@ type DBConfig struct {
 	Password string `yaml:"password" env:"RIDE_DB_PASSWORD" validate:"required"`
 	DBName   string `yaml:"dbname" env:"RIDE_DB_NAME" validate:"required"`
 	Type     string `yaml:"type" env:"RIDE_DB_TYPE" env-default:"postgres" validate:"required,oneof=postgres mysql"`
+}
+
+type KafkaConfig struct {
+	Brokers []string `yaml:"brokers" env:"RIDE_KAFKA_BROKERS" validate:"required"`
+	Topic   string   `yaml:"topic" env:"RIDE_KAFKA_TOPIC" validate:"required"`
 }
 
 func Load() (*Config, error) {

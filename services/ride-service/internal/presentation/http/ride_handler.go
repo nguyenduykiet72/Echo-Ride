@@ -18,7 +18,7 @@ type RideHandler struct {
 	getRideUC    application.GetRideUseCase
 }
 
-func NewRideHander(e *echo.Echo, createRideUC application.CreateRideUseCase, updateRideUC application.UpdateRideUseCase, getRideUC application.GetRideUseCase) {
+func NewRideHandler(e *echo.Echo, createRideUC application.CreateRideUseCase, updateRideUC application.UpdateRideUseCase, getRideUC application.GetRideUseCase) {
 	handler := &RideHandler{
 		createRideUC: createRideUC,
 		updateRideUC: updateRideUC,
@@ -52,7 +52,7 @@ func (h *RideHandler) CreateRide(ctx *echo.Context) error {
 		DropoffLon: req.DropoffLon,
 	}
 
-	ride, err := h.createRideUC.Excecute(ctx.Request().Context(), cmd)
+	ride, err := h.createRideUC.Execute(ctx.Request().Context(), cmd)
 	if err != nil {
 		return errs.ErrInternal.WithMessage(err.Error())
 	}

@@ -26,10 +26,17 @@ type RideFilter struct {
 	Offset   int32
 }
 
+type RideEventPayload struct {
+	EventID   string      `json:"event_id"`
+	EventType string      `json:"event_type"`
+	Timestamp string      `json:"timestamp"`
+	Data      interface{} `json:"data"`
+}
+
 type RideRepository interface {
-	Create(ctx context.Context, ride *Ride) (*Ride, error)
+	Create(ctx context.Context, ride *Ride, eventType string, eventPayload []byte) (*Ride, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Ride, error)
 	ListRides(ctx context.Context, filter RideFilter) ([]*Ride, error)
-	AcceptRide(ctx context.Context, rideID, driverID uuid.UUID) (*Ride, error)
-	UpdateStatus(ctx context.Context, rideID uuid.UUID, status string) (*Ride, error)
+	AcceptRide(ctx context.Context, rideID, driverID uuid.UUID, eventType string, eventPayload []byte) (*Ride, error)
+	UpdateStatus(ctx context.Context, rideID uuid.UUID, status string, eventType string, eventPayload []byte) (*Ride, error)
 }
