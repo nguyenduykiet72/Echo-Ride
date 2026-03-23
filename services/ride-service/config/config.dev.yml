@@ -9,3 +9,8 @@ database:
   password: "mysecretpassword"
   dbname: "echoride_db"
   type: "postgres"
+
+kafka:
+  brokers:
+    - "localhost:9092"
+  topic: "ride.events"

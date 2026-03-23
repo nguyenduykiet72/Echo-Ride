@@ -56,6 +56,18 @@ func (ns NullRideStatus) Value() (driver.Value, error) {
 	return string(ns.RideStatus), nil
 }
 
+type TOutboxEvent struct {
+	EventID            pgtype.UUID        `json:"event_id"`
+	EventAggregateID   string             `json:"event_aggregate_id"`
+	EventAggregateType string             `json:"event_aggregate_type"`
+	EventType          string             `json:"event_type"`
+	EventPayload       []byte             `json:"event_payload"`
+	EventStatus        string             `json:"event_status"`
+	EventCreatedAt     pgtype.Timestamptz `json:"event_created_at"`
+	EventUpdatedAt     pgtype.Timestamptz `json:"event_updated_at"`
+	EventPublishedAt   pgtype.Timestamptz `json:"event_published_at"`
+}
+
 type TRide struct {
 	RideID         pgtype.UUID        `json:"ride_id"`
 	RideRiderID    pgtype.UUID        `json:"ride_rider_id"`

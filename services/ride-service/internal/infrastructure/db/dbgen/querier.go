@@ -12,10 +12,14 @@ import (
 
 type Querier interface {
 	AcceptRide(ctx context.Context, arg AcceptRideParams) (TRide, error)
+	CreateOutboxEvent(ctx context.Context, arg CreateOutboxEventParams) (TOutboxEvent, error)
 	CreateRide(ctx context.Context, arg CreateRideParams) (TRide, error)
+	GetPendingOutboxEvents(ctx context.Context, limit int32) ([]TOutboxEvent, error)
 	GetRideByID(ctx context.Context, rideID pgtype.UUID) (TRide, error)
 	// sqlc.nargs allows to pass optional parameters to the query. If the parameter is not provided, it will be NULL, and the condition will be ignored.
 	ListRides(ctx context.Context, arg ListRidesParams) ([]TRide, error)
+	MarkOutboxEventAsFailed(ctx context.Context, eventID pgtype.UUID) error
+	MarkOutboxEventAsPublished(ctx context.Context, eventID pgtype.UUID) error
 	UpdateRideStatus(ctx context.Context, arg UpdateRideStatusParams) (TRide, error)
 }
 
