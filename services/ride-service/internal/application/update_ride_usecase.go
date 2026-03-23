@@ -4,6 +4,8 @@ import (
 	"context"
 	"echo-ride/pkg/errs"
 	"echo-ride/services/ride-service/internal/domain"
+	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -24,12 +26,29 @@ func NewUdpateRideUseCase(repo domain.RideRepository) UpdateRideUseCase {
 }
 
 func (u udpateRideUseCase) AcceptRide(ctx context.Context, rideID, driverID uuid.UUID) (*domain.Ride, error) {
-	ride, err := u.repo.AcceptRide(ctx, rideID, driverID)
+	eventData := map[string]interface{}{
+		"ride_id":        rideID,
+		"ride_driver_id": driverID,
+		"status":         "ACCEPTED",
+	}
+
+	payload := domain.RideEventPayload{
+		EventID:   uuid.New().String(),
+		EventType: "RIDE_ACCEPTED",
+		Timestamp: time.Now().Format(time.RFC3339),
+		Data:      eventData,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, errs.ErrInternal.WithMessage("Failed to marshal event payload").WithRootErr(err)
+	}
+
+	ride, err := u.repo.AcceptRide(ctx, rideID, driverID, "RIDE_ACCEPTED", payloadBytes)
 	if err != nil {
 		return nil, errs.ErrBadRequest.WithMessage("Ride is no longer available or already accepted").WithRootErr(err)
 	}
 
-	// TODO: publish event to message broker for ride accepted - Kafka (RideAcceptedEvent)
 	return ride, nil
 }
 
@@ -40,12 +59,24 @@ func (u udpateRideUseCase) UpdateStatus(ctx context.Context, rideID uuid.UUID, n
 	}
 
 	if !isValidStatusTransition(currentRide.Status, newStatus) {
-		return nil, errs.ErrBadRequest.WithMessage(
-			"Invalid state transition from " + currentRide.Status + " to " + newStatus,
-		)
+		return nil, errs.ErrBadRequest.WithMessage("Invalid state transition from " + currentRide.Status + " to " + newStatus)
 	}
 
-	updatedRide, err := u.repo.UpdateStatus(ctx, rideID, newStatus)
+	currentRide.Status = newStatus
+
+	payload := domain.RideEventPayload{
+		EventID:   uuid.New().String(),
+		EventType: "RIDE_STATUS_UPDATED",
+		Timestamp: time.Now().Format(time.RFC3339),
+		Data:      currentRide, // include the entire ride data in the event payload
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, errs.ErrInternal.WithMessage("Failed to marshal event payload").WithRootErr(err)
+	}
+
+	updatedRide, err := u.repo.UpdateStatus(ctx, rideID, newStatus, "RIDE_STATUS_UPDATED", payloadBytes)
 	if err != nil {
 		return nil, errs.ErrBadRequest.WithMessage("Failed to update ride status").WithRootErr(err)
 	}

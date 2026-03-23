@@ -4,12 +4,14 @@ import (
 	"context"
 	"echo-ride/pkg/errs"
 	"echo-ride/services/ride-service/internal/domain"
+	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 type CreateRideUseCase interface {
-	Excecute(ctx context.Context, req CreateRideCommand) (*domain.Ride, error)
+	Execute(ctx context.Context, req CreateRideCommand) (*domain.Ride, error)
 }
 
 type CreateRideCommand struct {
@@ -30,7 +32,7 @@ func NewCreateRideUseCase(repo domain.RideRepository) CreateRideUseCase {
 	}
 }
 
-func (c *createRideUseCase) Excecute(ctx context.Context, req CreateRideCommand) (*domain.Ride, error) {
+func (c *createRideUseCase) Execute(ctx context.Context, req CreateRideCommand) (*domain.Ride, error) {
 	if req.PickupLat == req.DropoffLat && req.PickupLon == req.DropoffLon {
 		//return nil, domain.ErrInvalidRide
 		return nil, errs.ErrSamePickupAndDropoff
@@ -48,7 +50,19 @@ func (c *createRideUseCase) Excecute(ctx context.Context, req CreateRideCommand)
 		Price:      calculatedPrice,
 	}
 
-	createdRide, err := c.repo.Create(ctx, newRide)
+	payload := domain.RideEventPayload{
+		EventID:   uuid.New().String(),
+		EventType: "RIDE_REQUESTED",
+		Timestamp: time.Now().Format(time.RFC3339),
+		Data:      newRide,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, errs.ErrInternal.WithMessage("Failed to marshal event payload").WithRootErr(err)
+	}
+
+	createdRide, err := c.repo.Create(ctx, newRide, "RIDE_REQUESTED", payloadBytes)
 	if err != nil {
 		return nil, errs.ErrBadRequest
 	}

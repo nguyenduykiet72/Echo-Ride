@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -62,8 +63,18 @@ func dbRideToDomain(dbRide dbgen.TRide) *domain.Ride {
 	}
 }
 
-func (r *RideRepositoryImpl) Create(ctx context.Context, ride *domain.Ride) (*domain.Ride, error) {
-	params := dbgen.CreateRideParams{
+func (r *RideRepositoryImpl) Create(ctx context.Context, ride *domain.Ride, eventType string, eventPayload []byte) (*domain.Ride, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	defer tx.Rollback(ctx)
+
+	// query runner with transaction
+	qtx := r.q.WithTx(tx)
+
+	rideParams := dbgen.CreateRideParams{
 		RideRiderID:    toPgtypeUUID(ride.RiderID),
 		RidePickupLat:  toPgtypeNumeric(ride.PickupLat),
 		RidePickupLon:  toPgtypeNumeric(ride.PickupLon),
@@ -72,9 +83,25 @@ func (r *RideRepositoryImpl) Create(ctx context.Context, ride *domain.Ride) (*do
 		RidePrice:      toPgtypeNumeric(ride.Price),
 	}
 
-	dbRide, err := r.q.CreateRide(ctx, params)
+	dbRide, err := qtx.CreateRide(ctx, rideParams)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create ride: %w", err)
+	}
+
+	outboxParams := dbgen.CreateOutboxEventParams{
+		EventAggregateID:   toUUID(dbRide.RideID).String(),
+		EventAggregateType: "ride",
+		EventType:          eventType,
+		EventPayload:       eventPayload,
+	}
+
+	_, err = qtx.CreateOutboxEvent(ctx, outboxParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create outbox event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	ride.ID = toUUID(dbRide.RideID)
@@ -126,29 +153,79 @@ func (r *RideRepositoryImpl) ListRides(ctx context.Context, filter domain.RideFi
 	return result, nil
 }
 
-func (r *RideRepositoryImpl) AcceptRide(ctx context.Context, rideID, driverID uuid.UUID) (*domain.Ride, error) {
-	params := dbgen.AcceptRideParams{
+func (r *RideRepositoryImpl) AcceptRide(ctx context.Context, rideID, driverID uuid.UUID, eventType string, eventPayload []byte) (*domain.Ride, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	defer tx.Rollback(ctx)
+
+	qtx := r.q.WithTx(tx)
+
+	acceptParams := dbgen.AcceptRideParams{
 		RideID:       toPgtypeUUID(rideID),
 		RideDriverID: toPgtypeUUID(driverID),
 	}
 
-	dbRide, err := r.q.AcceptRide(ctx, params)
+	dbRide, err := qtx.AcceptRide(ctx, acceptParams)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to accept ride: %w", err)
+	}
+
+	outboxParams := dbgen.CreateOutboxEventParams{
+		EventAggregateID:   toUUID(dbRide.RideID).String(),
+		EventAggregateType: "ride",
+		EventType:          eventType,
+		EventPayload:       eventPayload,
+	}
+
+	_, err = qtx.CreateOutboxEvent(ctx, outboxParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create outbox event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return dbRideToDomain(dbRide), nil
 }
 
-func (r *RideRepositoryImpl) UpdateStatus(ctx context.Context, rideID uuid.UUID, status string) (*domain.Ride, error) {
-	params := dbgen.UpdateRideStatusParams{
+func (r *RideRepositoryImpl) UpdateStatus(ctx context.Context, rideID uuid.UUID, status string, eventType string, eventPayload []byte) (*domain.Ride, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	defer tx.Rollback(ctx)
+
+	qtx := r.q.WithTx(tx)
+
+	udpateParams := dbgen.UpdateRideStatusParams{
 		RideID:     toPgtypeUUID(rideID),
 		RideStatus: dbgen.RideStatus(status),
 	}
 
-	dbRide, err := r.q.UpdateRideStatus(ctx, params)
+	dbRide, err := qtx.UpdateRideStatus(ctx, udpateParams)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update ride status: %w", err)
+	}
+
+	outboxParams := dbgen.CreateOutboxEventParams{
+		EventAggregateID:   toUUID(dbRide.RideID).String(),
+		EventAggregateType: "ride",
+		EventType:          eventType,
+		EventPayload:       eventPayload,
+	}
+
+	_, err = qtx.CreateOutboxEvent(ctx, outboxParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create outbox event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return dbRideToDomain(dbRide), nil
