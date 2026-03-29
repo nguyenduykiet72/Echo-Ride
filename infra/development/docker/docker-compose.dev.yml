@@ -94,6 +94,19 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:8.0
+    container_name: echoRide-redis
+#    env_file:
+#      - .env
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - echoride_network
+    volumes:
+      - redis_data:/data
+
   kafka:
     image: apache/kafka:4.0.0
     hostname: kafka
@@ -128,6 +141,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   kafka_data:
 
 networks:
