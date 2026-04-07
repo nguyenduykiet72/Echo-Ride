@@ -20,6 +20,11 @@ type Querier interface {
 	ListRides(ctx context.Context, arg ListRidesParams) ([]TRide, error)
 	MarkOutboxEventAsFailed(ctx context.Context, eventID pgtype.UUID) error
 	MarkOutboxEventAsPublished(ctx context.Context, eventID pgtype.UUID) error
+	// -- name: AcceptRide :one
+	// UPDATE t_rides
+	// SET ride_status = 'ACCEPTED', ride_driver_id = $2, ride_updated_at = NOW()
+	// WHERE ride_id = $1 AND ride_status = 'REQUESTED'
+	// RETURNING *;
 	UpdateRideStatus(ctx context.Context, arg UpdateRideStatusParams) (TRide, error)
 }
 

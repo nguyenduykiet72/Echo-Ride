@@ -13,6 +13,7 @@ type Config struct {
 	Server   ServerConfig `yaml:"server"`
 	Database DBConfig     `yaml:"database"`
 	Kafka    KafkaConfig  `yaml:"kafka"`
+	Jaeger   JaegerConfig `yaml:"jaeger"`
 }
 
 type ServerConfig struct {
@@ -32,6 +33,11 @@ type DBConfig struct {
 type KafkaConfig struct {
 	Brokers []string `yaml:"brokers" env:"RIDE_KAFKA_BROKERS" validate:"required"`
 	Topic   string   `yaml:"topic" env:"RIDE_KAFKA_TOPIC" validate:"required"`
+}
+
+type JaegerConfig struct {
+	AgentHost string `yaml:"service_host" env:"RIDE_JAEGER_AGENT_HOST" env-default:"localhost" validate:"required"`
+	AgentPort int    `yaml:"service_port" env:"RIDE_JAEGER_AGENT_PORT" env-default:"4317" validate:"required"`
 }
 
 func Load() (*Config, error) {

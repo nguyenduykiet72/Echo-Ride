@@ -3,8 +3,8 @@ package grpc
 import (
 	"context"
 	"echo-ride/pkg/errs"
+	pb "echo-ride/pkg/grpc/location/v1"
 	"echo-ride/services/location-service/internal/domain"
-	pb "echo-ride/services/location-service/pkg/grpc/generated/location/v1"
 
 	"go.uber.org/zap"
 )

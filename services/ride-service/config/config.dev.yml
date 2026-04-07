@@ -14,3 +14,7 @@ kafka:
   brokers:
     - "localhost:9092"
   topic: "ride.events"
+
+jaeger:
+ service_host: "localhost"
+ service_port: 4317

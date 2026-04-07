@@ -32,14 +32,23 @@ WHERE (ride_rider_id = sqlc.narg('rider_id') OR sqlc.narg('rider_id') IS NULL)
 ORDER BY ride_created_at DESC
 LIMIT $1 OFFSET $2;
 
--- name: AcceptRide :one
-UPDATE t_rides
-SET ride_status = 'ACCEPTED', ride_driver_id = $2, ride_updated_at = NOW()
-WHERE ride_id = $1 AND ride_status = 'REQUESTED'
-RETURNING *;
+-- -- name: AcceptRide :one
+-- UPDATE t_rides
+-- SET ride_status = 'ACCEPTED', ride_driver_id = $2, ride_updated_at = NOW()
+-- WHERE ride_id = $1 AND ride_status = 'REQUESTED'
+-- RETURNING *;
 
 -- name: UpdateRideStatus :one
 UPDATE t_rides
 SET ride_status = $2, ride_updated_at = NOW()
 WHERE ride_id = $1
+RETURNING *;
+
+-- name: AcceptRide :one
+UPDATE t_rides
+SET ride_status = 'ACCEPTED'::ride_status,
+    ride_driver_id = sqlc.arg(ride_driver_id),
+    ride_updated_at = NOW()
+WHERE ride_id = sqlc.arg(ride_id)
+  AND ride_status = 'REQUESTED'::ride_status
 RETURNING *;

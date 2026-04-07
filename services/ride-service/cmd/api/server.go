@@ -1,6 +1,7 @@
 package main
 
 import (
+	"echo-ride/pkg/middlewares"
 	"echo-ride/pkg/response"
 	"echo-ride/services/ride-service/internal/application"
 	"echo-ride/services/ride-service/internal/infrastructure/repository"
@@ -25,7 +26,8 @@ func (cv *customValidator) Validate(i interface{}) error {
 func newServer(dbPool *pgxpool.Pool, log *zap.Logger) *echo.Echo {
 	e := echo.New()
 	e.Validator = &customValidator{v: validator.New()}
-	e.Use(middleware.Recover(), middleware.RequestID())
+	e.Use(middleware.Recover())
+	e.Use(middlewares.OTelMiddleware("ride-service"))
 	e.HTTPErrorHandler = response.CustomHTTPErrorHandler(log)
 
 	e.GET("/health", func(c *echo.Context) error {

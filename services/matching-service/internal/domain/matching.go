@@ -1,0 +1,62 @@
+package domain
+
+import (
+	"context"
+)
+
+type RideDispatchStatus string
+type RideEventStatus string
+
+const (
+	RideStatusFinding  RideDispatchStatus = "FINDING"
+	RideStatusAccepted RideDispatchStatus = "ACCEPTED"
+	RideStatusFailed   RideDispatchStatus = "FAILED"
+)
+
+const (
+	RideEventStatusPending    RideEventStatus = "PENDING"
+	RideEventStatusPublished  RideEventStatus = "PUBLISHED"
+	RideEventStatusFailed     RideEventStatus = "FAILED"
+	RideEventStatusRequested  RideEventStatus = "REQUESTED"
+	RideEventStatusAccepted   RideEventStatus = "ACCEPTED"
+	RideEventStatusInProgress RideEventStatus = "IN_PROGRESS"
+	RideEventStatusCompleted  RideEventStatus = "COMPLETED"
+	RideEventStatusCancelled  RideEventStatus = "CANCELLED"
+)
+
+type CandidateDriver struct {
+	DriverID   string
+	Lat        float64
+	Lng        float64
+	DistanceKm float64
+	Score      float64
+}
+
+type RideRequestEvent struct {
+	RideID    string  `json:"id"`
+	RiderID   string  `json:"rider_id"`
+	PickupLat float64 `json:"pickup_lat"`
+	PickupLng float64 `json:"pickup_lng"`
+}
+
+type RideDispatchState struct {
+	RideID       string             `json:"ride_id"`
+	Candidates   []CandidateDriver  `json:"candidates"`
+	CurrentIndex int                `json:"current_index"`
+	Status       RideDispatchStatus `json:"status"` // FINDING, ACCEPTED, FAILED
+	UpdatedAt    int64              `json:"updated_at"`
+}
+
+type LocationGateway interface {
+	GetNearestDrivers(ctx context.Context, lat, lng, radiusKm float64, limit int) ([]CandidateDriver, error)
+}
+
+type DispatchRepository interface {
+	SaveState(ctx context.Context, state RideDispatchState) error
+	GetState(ctx context.Context, rideID string) (*RideDispatchState, error)
+	DeleteState(ctx context.Context, rideID string) error
+	SetTimeout(ctx context.Context, rideID string, expireAt int64) error
+	GetExpiredRides(ctx context.Context, now int64, limit int) ([]string, error)
+	RemoveTimeout(ctx context.Context, rideID string) error
+	CheckAndSetIdempotency(ctx context.Context, eventID string) (bool, error)
+}
