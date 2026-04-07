@@ -4,6 +4,7 @@ import (
 	"context"
 	"echo-ride/services/ride-service/internal/domain"
 	"echo-ride/services/ride-service/internal/infrastructure/db/dbgen"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -55,9 +56,9 @@ func dbRideToDomain(dbRide dbgen.TRide) *domain.Ride {
 		RiderID:    toUUID(dbRide.RideRiderID),
 		DriverID:   driverID,
 		PickupLat:  numericToFloat64(dbRide.RidePickupLat),
-		PickupLon:  numericToFloat64(dbRide.RidePickupLon),
+		PickupLng:  numericToFloat64(dbRide.RidePickupLon),
 		DropoffLat: numericToFloat64(dbRide.RideDropoffLat),
-		DropoffLon: numericToFloat64(dbRide.RideDropoffLon),
+		DropoffLng: numericToFloat64(dbRide.RideDropoffLon),
 		Status:     string(dbRide.RideStatus),
 		Price:      numericToFloat64(dbRide.RidePrice),
 	}
@@ -77,9 +78,9 @@ func (r *RideRepositoryImpl) Create(ctx context.Context, ride *domain.Ride, even
 	rideParams := dbgen.CreateRideParams{
 		RideRiderID:    toPgtypeUUID(ride.RiderID),
 		RidePickupLat:  toPgtypeNumeric(ride.PickupLat),
-		RidePickupLon:  toPgtypeNumeric(ride.PickupLon),
+		RidePickupLon:  toPgtypeNumeric(ride.PickupLng),
 		RideDropoffLat: toPgtypeNumeric(ride.DropoffLat),
-		RideDropoffLon: toPgtypeNumeric(ride.DropoffLon),
+		RideDropoffLon: toPgtypeNumeric(ride.DropoffLng),
 		RidePrice:      toPgtypeNumeric(ride.Price),
 	}
 
@@ -170,12 +171,15 @@ func (r *RideRepositoryImpl) AcceptRide(ctx context.Context, rideID, driverID uu
 
 	dbRide, err := qtx.AcceptRide(ctx, acceptParams)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("ride not found or already accepted: %w", err)
+		}
 		return nil, fmt.Errorf("failed to accept ride: %w", err)
 	}
 
 	outboxParams := dbgen.CreateOutboxEventParams{
 		EventAggregateID:   toUUID(dbRide.RideID).String(),
-		EventAggregateType: "ride",
+		EventAggregateType: string(domain.OutboxStateRide),
 		EventType:          eventType,
 		EventPayload:       eventPayload,
 	}

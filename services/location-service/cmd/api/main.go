@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	pb "echo-ride/pkg/grpc/location/v1"
 	"echo-ride/services/location-service/config"
 	"echo-ride/services/location-service/internal/application"
 	redisInfra "echo-ride/services/location-service/internal/infrastructure/redis"
 	grpcLocation "echo-ride/services/location-service/internal/presentation/grpc"
 	"echo-ride/services/location-service/internal/presentation/ws"
-	pb "echo-ride/services/location-service/pkg/grpc/generated/location/v1"
 	"echo-ride/services/location-service/pkg/logger"
 	"errors"
 	"fmt"

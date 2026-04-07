@@ -47,9 +47,9 @@ func (h *RideHandler) CreateRide(ctx *echo.Context) error {
 	cmd := application.CreateRideCommand{
 		RiderID:    req.RiderID,
 		PickupLat:  req.PickupLat,
-		PickupLon:  req.PickupLon,
+		PickupLng:  req.PickupLon,
 		DropoffLat: req.DropoffLat,
-		DropoffLon: req.DropoffLon,
+		DropoffLng: req.DropoffLon,
 	}
 
 	ride, err := h.createRideUC.Execute(ctx.Request().Context(), cmd)

@@ -6,16 +6,29 @@ import (
 	"github.com/google/uuid"
 )
 
+type EventType string
+type OutboxState string
+
+const (
+	OutboxStateRide OutboxState = "RIDE"
+)
+
+const (
+	EventTypeRideRequested EventType = "RIDE_REQUESTED"
+	EventTypeRideAccepted  EventType = "RIDE_ACCEPTED"
+	EventTypeRideCompleted EventType = "RIDE_COMPLETED"
+)
+
 type Ride struct {
-	ID         uuid.UUID
-	RiderID    uuid.UUID
-	DriverID   *uuid.UUID
-	PickupLat  float64
-	PickupLon  float64
-	DropoffLat float64
-	DropoffLon float64
-	Status     string
-	Price      float64
+	ID         uuid.UUID  `json:"id"`
+	RiderID    uuid.UUID  `json:"rider_id"`
+	DriverID   *uuid.UUID `json:"driver_id,omitempty"` // pointer to allow null value when no driver assigned
+	PickupLat  float64    `json:"pickup_lat"`
+	PickupLng  float64    `json:"pickup_lng"`
+	DropoffLat float64    `json:"dropoff_lat"`
+	DropoffLng float64    `json:"dropoff_lng"`
+	Status     string     `json:"status"`
+	Price      float64    `json:"price"`
 }
 
 type RideFilter struct {
@@ -27,10 +40,11 @@ type RideFilter struct {
 }
 
 type RideEventPayload struct {
-	EventID   string      `json:"event_id"`
-	EventType string      `json:"event_type"`
-	Timestamp string      `json:"timestamp"`
-	Data      interface{} `json:"data"`
+	EventID      string            `json:"event_id"`
+	EventType    EventType         `json:"event_type"`
+	Timestamp    string            `json:"timestamp"`
+	Data         interface{}       `json:"data"`
+	TraceContext map[string]string `json:"trace_context,omitempty"`
 }
 
 type RideRepository interface {
