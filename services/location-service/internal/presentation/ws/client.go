@@ -60,7 +60,7 @@ func (c *Client) readPump() {
 		}
 
 		loc := domain.DriverLocation{
-			DriverID: c.DriverID.String(),
+			DriverID: c.DriverID,
 			Lat:      payload.Lat,
 			Lng:      payload.Lng,
 		}

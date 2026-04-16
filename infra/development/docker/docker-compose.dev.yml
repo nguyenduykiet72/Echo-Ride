@@ -171,6 +171,23 @@ services:
     networks:
       - echoride_network
 
+  osrm:
+    image: osrm/osrm-backend:latest
+    container_name: echoRide-osrm
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./osrm_data:/data:ro
+    command: ["osrm-routed", "--algorithm","mld","/data/vietnam-latest.osrm"]
+    networks:
+      - echoride_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:5000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 volumes:
   postgres_data:
   redis_data:

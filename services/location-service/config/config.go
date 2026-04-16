@@ -13,7 +13,8 @@ type Config struct {
 	Server ServerConfig `yaml:"server"`
 	Redis  RedisConfig  `yaml:"redis"`
 	//Kafka  KafkaConfig  `yaml:"kafka"`
-	Grpc GrpcConfig `yaml:"grpc"`
+	Grpc   GrpcConfig   `yaml:"grpc"`
+	Jaeger JaegerConfig `yaml:"jaeger"`
 }
 
 type ServerConfig struct {
@@ -35,6 +36,11 @@ type RedisConfig struct {
 
 type GrpcConfig struct {
 	Port string `yaml:"port" env:"LOCATION_GRPC_PORT" env-default:"9090" validate:"required"`
+}
+
+type JaegerConfig struct {
+	AgentHost string `yaml:"service_host" env:"RIDE_JAEGER_AGENT_HOST" env-default:"localhost" validate:"required"`
+	AgentPort int    `yaml:"service_port" env:"RIDE_JAEGER_AGENT_PORT" env-default:"4317" validate:"required"`
 }
 
 func Load() (*Config, error) {

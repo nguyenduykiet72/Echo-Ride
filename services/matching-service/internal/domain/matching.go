@@ -16,12 +16,13 @@ const (
 const (
 	RideEventStatusPending    RideEventStatus = "PENDING"
 	RideEventStatusPublished  RideEventStatus = "PUBLISHED"
-	RideEventStatusFailed     RideEventStatus = "FAILED"
-	RideEventStatusRequested  RideEventStatus = "REQUESTED"
-	RideEventStatusAccepted   RideEventStatus = "ACCEPTED"
+	RideEventStatusFailed     RideEventStatus = "RIDE_FAILED"
+	RideEventStatusRequested  RideEventStatus = "RIDE_REQUESTED"
+	RideEventStatusAccepted   RideEventStatus = "RIDE_ACCEPTED"
 	RideEventStatusInProgress RideEventStatus = "IN_PROGRESS"
-	RideEventStatusCompleted  RideEventStatus = "COMPLETED"
-	RideEventStatusCancelled  RideEventStatus = "CANCELLED"
+	RideEventStatusCompleted  RideEventStatus = "RIDE_COMPLETED"
+	RideEventStatusCancelled  RideEventStatus = "RIDE_CANCELLED"
+	RideDriverMatched         RideEventStatus = "DRIVER_MATCHED"
 )
 
 type CandidateDriver struct {
@@ -48,7 +49,7 @@ type RideDispatchState struct {
 }
 
 type LocationGateway interface {
-	GetNearestDrivers(ctx context.Context, lat, lng, radiusKm float64, limit int) ([]CandidateDriver, error)
+	GetNearestDrivers(ctx context.Context, rideID string, lat, lng, radiusKm float64, limit int) ([]CandidateDriver, error)
 }
 
 type DispatchRepository interface {

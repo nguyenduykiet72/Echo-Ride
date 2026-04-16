@@ -23,10 +23,11 @@ const (
 
 type FindNearestDriversRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PickupLat     float64                `protobuf:"fixed64,1,opt,name=pickup_lat,json=pickupLat,proto3" json:"pickup_lat,omitempty"`
-	PickupLng     float64                `protobuf:"fixed64,2,opt,name=pickup_lng,json=pickupLng,proto3" json:"pickup_lng,omitempty"`
-	RadiusKm      float64                `protobuf:"fixed64,3,opt,name=radius_km,json=radiusKm,proto3" json:"radius_km,omitempty"`
-	Limit         int32                  `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	RideId        string                 `protobuf:"bytes,1,opt,name=ride_id,json=rideId,proto3" json:"ride_id,omitempty"`
+	PickupLat     float64                `protobuf:"fixed64,2,opt,name=pickup_lat,json=pickupLat,proto3" json:"pickup_lat,omitempty"`
+	PickupLng     float64                `protobuf:"fixed64,3,opt,name=pickup_lng,json=pickupLng,proto3" json:"pickup_lng,omitempty"`
+	RadiusKm      float64                `protobuf:"fixed64,4,opt,name=radius_km,json=radiusKm,proto3" json:"radius_km,omitempty"`
+	Limit         int32                  `protobuf:"varint,5,opt,name=limit,proto3" json:"limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -61,6 +62,13 @@ func (*FindNearestDriversRequest) Descriptor() ([]byte, []int) {
 	return file_location_v1_location_proto_rawDescGZIP(), []int{0}
 }
 
+func (x *FindNearestDriversRequest) GetRideId() string {
+	if x != nil {
+		return x.RideId
+	}
+	return ""
+}
+
 func (x *FindNearestDriversRequest) GetPickupLat() float64 {
 	if x != nil {
 		return x.PickupLat
@@ -89,30 +97,31 @@ func (x *FindNearestDriversRequest) GetLimit() int32 {
 	return 0
 }
 
-type DriverDistance struct {
+type DriverEtaInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DriverId      string                 `protobuf:"bytes,1,opt,name=driver_id,json=driverId,proto3" json:"driver_id,omitempty"`
 	DistanceKm    float64                `protobuf:"fixed64,2,opt,name=distance_km,json=distanceKm,proto3" json:"distance_km,omitempty"`
 	Lat           float64                `protobuf:"fixed64,3,opt,name=lat,proto3" json:"lat,omitempty"`
 	Lng           float64                `protobuf:"fixed64,4,opt,name=lng,proto3" json:"lng,omitempty"`
+	EtaSeconds    int32                  `protobuf:"varint,5,opt,name=eta_seconds,json=etaSeconds,proto3" json:"eta_seconds,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DriverDistance) Reset() {
-	*x = DriverDistance{}
+func (x *DriverEtaInfo) Reset() {
+	*x = DriverEtaInfo{}
 	mi := &file_location_v1_location_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DriverDistance) String() string {
+func (x *DriverEtaInfo) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DriverDistance) ProtoMessage() {}
+func (*DriverEtaInfo) ProtoMessage() {}
 
-func (x *DriverDistance) ProtoReflect() protoreflect.Message {
+func (x *DriverEtaInfo) ProtoReflect() protoreflect.Message {
 	mi := &file_location_v1_location_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -124,42 +133,49 @@ func (x *DriverDistance) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DriverDistance.ProtoReflect.Descriptor instead.
-func (*DriverDistance) Descriptor() ([]byte, []int) {
+// Deprecated: Use DriverEtaInfo.ProtoReflect.Descriptor instead.
+func (*DriverEtaInfo) Descriptor() ([]byte, []int) {
 	return file_location_v1_location_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *DriverDistance) GetDriverId() string {
+func (x *DriverEtaInfo) GetDriverId() string {
 	if x != nil {
 		return x.DriverId
 	}
 	return ""
 }
 
-func (x *DriverDistance) GetDistanceKm() float64 {
+func (x *DriverEtaInfo) GetDistanceKm() float64 {
 	if x != nil {
 		return x.DistanceKm
 	}
 	return 0
 }
 
-func (x *DriverDistance) GetLat() float64 {
+func (x *DriverEtaInfo) GetLat() float64 {
 	if x != nil {
 		return x.Lat
 	}
 	return 0
 }
 
-func (x *DriverDistance) GetLng() float64 {
+func (x *DriverEtaInfo) GetLng() float64 {
 	if x != nil {
 		return x.Lng
 	}
 	return 0
 }
 
+func (x *DriverEtaInfo) GetEtaSeconds() int32 {
+	if x != nil {
+		return x.EtaSeconds
+	}
+	return 0
+}
+
 type FindNearestDriversResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Drivers       []*DriverDistance      `protobuf:"bytes,1,rep,name=drivers,proto3" json:"drivers,omitempty"`
+	Drivers       []*DriverEtaInfo       `protobuf:"bytes,1,rep,name=drivers,proto3" json:"drivers,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -194,7 +210,7 @@ func (*FindNearestDriversResponse) Descriptor() ([]byte, []int) {
 	return file_location_v1_location_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *FindNearestDriversResponse) GetDrivers() []*DriverDistance {
+func (x *FindNearestDriversResponse) GetDrivers() []*DriverEtaInfo {
 	if x != nil {
 		return x.Drivers
 	}
@@ -205,22 +221,25 @@ var File_location_v1_location_proto protoreflect.FileDescriptor
 
 const file_location_v1_location_proto_rawDesc = "" +
 	"\n" +
-	"\x1alocation/v1/location.proto\x12\vlocation.v1\"\x8c\x01\n" +
-	"\x19FindNearestDriversRequest\x12\x1d\n" +
+	"\x1alocation/v1/location.proto\x12\vlocation.v1\"\xa5\x01\n" +
+	"\x19FindNearestDriversRequest\x12\x17\n" +
+	"\aride_id\x18\x01 \x01(\tR\x06rideId\x12\x1d\n" +
 	"\n" +
-	"pickup_lat\x18\x01 \x01(\x01R\tpickupLat\x12\x1d\n" +
+	"pickup_lat\x18\x02 \x01(\x01R\tpickupLat\x12\x1d\n" +
 	"\n" +
-	"pickup_lng\x18\x02 \x01(\x01R\tpickupLng\x12\x1b\n" +
-	"\tradius_km\x18\x03 \x01(\x01R\bradiusKm\x12\x14\n" +
-	"\x05limit\x18\x04 \x01(\x05R\x05limit\"r\n" +
-	"\x0eDriverDistance\x12\x1b\n" +
+	"pickup_lng\x18\x03 \x01(\x01R\tpickupLng\x12\x1b\n" +
+	"\tradius_km\x18\x04 \x01(\x01R\bradiusKm\x12\x14\n" +
+	"\x05limit\x18\x05 \x01(\x05R\x05limit\"\x92\x01\n" +
+	"\rDriverEtaInfo\x12\x1b\n" +
 	"\tdriver_id\x18\x01 \x01(\tR\bdriverId\x12\x1f\n" +
 	"\vdistance_km\x18\x02 \x01(\x01R\n" +
 	"distanceKm\x12\x10\n" +
 	"\x03lat\x18\x03 \x01(\x01R\x03lat\x12\x10\n" +
-	"\x03lng\x18\x04 \x01(\x01R\x03lng\"S\n" +
-	"\x1aFindNearestDriversResponse\x125\n" +
-	"\adrivers\x18\x01 \x03(\v2\x1b.location.v1.DriverDistanceR\adrivers2x\n" +
+	"\x03lng\x18\x04 \x01(\x01R\x03lng\x12\x1f\n" +
+	"\veta_seconds\x18\x05 \x01(\x05R\n" +
+	"etaSeconds\"R\n" +
+	"\x1aFindNearestDriversResponse\x124\n" +
+	"\adrivers\x18\x01 \x03(\v2\x1a.location.v1.DriverEtaInfoR\adrivers2x\n" +
 	"\x0fLocationService\x12e\n" +
 	"\x12FindNearestDrivers\x12&.location.v1.FindNearestDriversRequest\x1a'.location.v1.FindNearestDriversResponseB:Z8Go-EchoRide/services/location-service/pkg/grpc/generatedb\x06proto3"
 
@@ -239,11 +258,11 @@ func file_location_v1_location_proto_rawDescGZIP() []byte {
 var file_location_v1_location_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_location_v1_location_proto_goTypes = []any{
 	(*FindNearestDriversRequest)(nil),  // 0: location.v1.FindNearestDriversRequest
-	(*DriverDistance)(nil),             // 1: location.v1.DriverDistance
+	(*DriverEtaInfo)(nil),              // 1: location.v1.DriverEtaInfo
 	(*FindNearestDriversResponse)(nil), // 2: location.v1.FindNearestDriversResponse
 }
 var file_location_v1_location_proto_depIdxs = []int32{
-	1, // 0: location.v1.FindNearestDriversResponse.drivers:type_name -> location.v1.DriverDistance
+	1, // 0: location.v1.FindNearestDriversResponse.drivers:type_name -> location.v1.DriverEtaInfo
 	0, // 1: location.v1.LocationService.FindNearestDrivers:input_type -> location.v1.FindNearestDriversRequest
 	2, // 2: location.v1.LocationService.FindNearestDrivers:output_type -> location.v1.FindNearestDriversResponse
 	2, // [2:3] is the sub-list for method output_type

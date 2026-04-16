@@ -30,7 +30,7 @@ func (b *LocationBatcher) Push(loc domain.DriverLocation) {
 	select {
 	case b.inputChan <- loc:
 	default:
-		b.logger.Warn("Location batcher input channel is full, dropping location update", zap.String("driver_id", loc.DriverID))
+		b.logger.Warn("Location batcher input channel is full, dropping location update", zap.String("driver_id", loc.DriverID.String()))
 	}
 }
 
