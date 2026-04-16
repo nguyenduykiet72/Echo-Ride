@@ -15,3 +15,7 @@ kafka:
 
 grpc:
   port: "50052"
+
+jaeger:
+  service_host: "localhost"
+  service_port: 4317

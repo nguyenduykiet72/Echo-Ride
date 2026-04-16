@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	pb "echo-ride/pkg/grpc/location/v1"
+	"echo-ride/pkg/tracing"
 	"echo-ride/services/location-service/config"
 	"echo-ride/services/location-service/internal/application"
+	"echo-ride/services/location-service/internal/infrastructure/osrm"
 	redisInfra "echo-ride/services/location-service/internal/infrastructure/redis"
 	grpcLocation "echo-ride/services/location-service/internal/presentation/grpc"
 	"echo-ride/services/location-service/internal/presentation/ws"
@@ -18,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -33,6 +36,17 @@ func main() {
 	defer log.Sync()
 	log.Info("Starting Location Service", zap.String("mode", cfg.Server.Mode))
 
+	tp, err := tracing.InitTracer("location-service", cfg.Jaeger.AgentHost+":"+fmt.Sprint(cfg.Jaeger.AgentPort))
+	if err != nil {
+		log.Fatal("Failed to init tracer", zap.Error(err))
+	}
+
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			log.Fatal("Failed to shutdown tracer", zap.Error(err))
+		}
+	}()
+
 	redisClient, errRedis := redisInfra.NewRedisClient(cfg.Redis)
 	if errRedis != nil {
 		log.Fatal("Failed to create Redis client", zap.Error(errRedis))
@@ -44,6 +58,10 @@ func main() {
 	defer redisClient.Close()
 
 	locationRepo := redisInfra.NewRedisLocationRepo(redisClient)
+
+	osrmClient := osrm.NewOSRMClient("http://localhost:5000")
+
+	findDriverUC := application.NewFindDriversUseCase(locationRepo, osrmClient)
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
@@ -77,8 +95,8 @@ func main() {
 		log.Fatal("Failed to listen for gRPC", zap.Error(err))
 	}
 
-	grpcServer := grpc.NewServer()
-	locationGrpcHandler := grpcLocation.NewLocationGrpcServer(locationRepo, log)
+	grpcServer := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
+	locationGrpcHandler := grpcLocation.NewLocationGrpcServer(findDriverUC, log)
 	pb.RegisterLocationServiceServer(grpcServer, locationGrpcHandler)
 	go func() {
 		log.Info("gRPC server is listening", zap.String("address", grpcAddr))

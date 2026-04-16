@@ -36,7 +36,7 @@ func newServer(dbPool *pgxpool.Pool, log *zap.Logger) *echo.Echo {
 
 	rideRepo := repository.NewRideRepository(dbPool)
 	createRideUC := application.NewCreateRideUseCase(rideRepo)
-	updateRideUC := application.NewUdpateRideUseCase(rideRepo)
+	updateRideUC := application.NewUdpateRideUseCase(rideRepo, log)
 	getRideUC := application.NewGetRideUseCase(rideRepo)
 	rideHttp.NewRideHandler(e, createRideUC, updateRideUC, getRideUC)
 

@@ -9,19 +9,21 @@ service LocationService {
 }
 
 message FindNearestDriversRequest {
-  double pickup_lat = 1;
-  double pickup_lng = 2;
-  double radius_km = 3;
-  int32 limit = 4;
+  string ride_id = 1;
+  double pickup_lat = 2;
+  double pickup_lng = 3;
+  double radius_km = 4;
+  int32 limit = 5;
 }
 
-message DriverDistance {
+message DriverEtaInfo {
   string driver_id = 1;
   double distance_km = 2;
   double lat = 3;
   double lng = 4;
+  int32 eta_seconds = 5;
 }
 
 message FindNearestDriversResponse {
-  repeated DriverDistance drivers = 1;
+  repeated DriverEtaInfo drivers = 1;
 }

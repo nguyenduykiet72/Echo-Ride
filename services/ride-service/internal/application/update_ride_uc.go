@@ -8,24 +8,32 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 )
 
 type UpdateRideUseCase interface {
 	AcceptRide(ctx context.Context, rideID, driverID uuid.UUID) (*domain.Ride, error)
 	UpdateStatus(ctx context.Context, rideID uuid.UUID, newStatus string) (*domain.Ride, error)
+	Execute(ctx context.Context, rideID uuid.UUID, newStatus domain.RideStatus) error
 }
 
 type udpateRideUseCase struct {
-	repo domain.RideRepository
+	repo   domain.RideRepository
+	logger *zap.Logger
+	tracer trace.Tracer
 }
 
-func NewUdpateRideUseCase(repo domain.RideRepository) UpdateRideUseCase {
+func NewUdpateRideUseCase(repo domain.RideRepository, logger *zap.Logger) UpdateRideUseCase {
 	return &udpateRideUseCase{
-		repo: repo,
+		repo:   repo,
+		logger: logger,
+		tracer: otel.Tracer("ride-service-uc"),
 	}
 }
 
-func (u udpateRideUseCase) AcceptRide(ctx context.Context, rideID, driverID uuid.UUID) (*domain.Ride, error) {
+func (u *udpateRideUseCase) AcceptRide(ctx context.Context, rideID, driverID uuid.UUID) (*domain.Ride, error) {
 	eventData := map[string]interface{}{
 		"ride_id":        rideID.String(),
 		"ride_driver_id": driverID.String(),
@@ -52,7 +60,7 @@ func (u udpateRideUseCase) AcceptRide(ctx context.Context, rideID, driverID uuid
 	return ride, nil
 }
 
-func (u udpateRideUseCase) UpdateStatus(ctx context.Context, rideID uuid.UUID, newStatus string) (*domain.Ride, error) {
+func (u *udpateRideUseCase) UpdateStatus(ctx context.Context, rideID uuid.UUID, newStatus string) (*domain.Ride, error) {
 	currentRide, err := u.repo.GetByID(ctx, rideID)
 	if err != nil {
 		return nil, errs.ErrNotFound.WithMessage("Ride not found").WithRootErr(err)
@@ -99,4 +107,33 @@ func isValidStatusTransition(current, new string) bool {
 	}
 
 	return validNextStates[new]
+}
+
+func (u *udpateRideUseCase) Execute(ctx context.Context, rideID uuid.UUID, newStatus domain.RideStatus) error {
+	ctx, span := u.tracer.Start(ctx, "UseCase.UpdateRideStatus")
+	defer span.End()
+
+	ride, err := u.repo.GetByID(ctx, rideID)
+	if err != nil {
+		span.RecordError(err)
+		return errs.ErrNotFound.WithMessage("Ride not found").WithRootErr(err)
+	}
+	if ride == nil {
+		u.logger.Warn("Ride not found", zap.String("Ride ID", rideID.String()))
+		return nil
+	}
+
+	statusStr := string(newStatus)
+
+	_, err = u.repo.UpdateStatus(ctx, rideID, statusStr, "", nil)
+	if err != nil {
+		span.RecordError(err)
+		return errs.ErrInternal.WithMessage("Failed to update ride status").WithRootErr(err)
+	}
+
+	u.logger.Info("Ride status updated successfully",
+		zap.String("ride_id", rideID.String()),
+		zap.String("new_status", string(newStatus)))
+
+	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -32,7 +33,7 @@ func (r *redisLocationRepo) SaveLocationBatch(ctx context.Context, locations []d
 
 	for _, loc := range locations {
 		pipe.GeoAdd(ctx, DriverLocationKey, &redis.GeoLocation{
-			Name:      loc.DriverID,
+			Name:      loc.DriverID.String(),
 			Longitude: loc.Lng,
 			Latitude:  loc.Lat,
 		})
@@ -107,8 +108,13 @@ func (r *redisLocationRepo) FindNearestDrivers(ctx context.Context, lat, lng, ra
 
 	var drivers []domain.DriverLocation
 	for _, loc := range res {
+		parsedDriverID, err := uuid.Parse(loc.Name)
+		if err != nil {
+			continue
+		}
+		
 		drivers = append(drivers, domain.DriverLocation{
-			DriverID:   loc.Name,
+			DriverID:   parsedDriverID,
 			Lat:        loc.Latitude,
 			Lng:        loc.Longitude,
 			DistanceKm: loc.Dist,
@@ -116,4 +122,44 @@ func (r *redisLocationRepo) FindNearestDrivers(ctx context.Context, lat, lng, ra
 	}
 
 	return drivers, nil
+}
+
+func (r *redisLocationRepo) FindDriversInRadius(ctx context.Context, lat, lng, radius float64, limit int) ([]domain.DriverLocation, error) {
+	query := &redis.GeoSearchLocationQuery{
+		GeoSearchQuery: redis.GeoSearchQuery{
+			Longitude:  lng,
+			Latitude:   lat,
+			Radius:     radius,
+			RadiusUnit: "km",
+			Count:      limit,
+			Sort:       "ASC",
+		},
+		WithCoord: true, // Include coordinates of the drivers in the result
+		WithDist:  true, // Include distance from the query point in the result
+	}
+
+	locations, err := r.client.GeoSearchLocation(ctx, DriverLocationKey, query).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return []domain.DriverLocation{}, nil
+		}
+		return nil, fmt.Errorf("failed to find drivers in radius: %w", err)
+	}
+
+	var results []domain.DriverLocation
+	for _, loc := range locations {
+		driverID, err := uuid.Parse(loc.Name)
+		if err != nil {
+			continue
+		}
+
+		results = append(results, domain.DriverLocation{
+			DriverID:   driverID,
+			Lat:        loc.Latitude,
+			Lng:        loc.Longitude,
+			DistanceKm: loc.Dist,
+		})
+	}
+
+	return results, nil
 }

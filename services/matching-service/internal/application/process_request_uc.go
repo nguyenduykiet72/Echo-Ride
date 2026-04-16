@@ -2,9 +2,12 @@ package application
 
 import (
 	"context"
+	"echo-ride/pkg/errs"
 	"echo-ride/services/matching-service/internal/domain"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -16,6 +19,7 @@ type processRideRequestUseCase struct {
 	locationGateway domain.LocationGateway
 	dispatchRepo    domain.DispatchRepository
 	logger          *zap.Logger
+	tracer          trace.Tracer
 }
 
 func NewProcessRideRequestUseCase(locGw domain.LocationGateway, dispatchRepo domain.DispatchRepository, logger *zap.Logger) ProcessRideRequestUseCase {
@@ -23,16 +27,21 @@ func NewProcessRideRequestUseCase(locGw domain.LocationGateway, dispatchRepo dom
 		locationGateway: locGw,
 		dispatchRepo:    dispatchRepo,
 		logger:          logger,
+		tracer:          otel.Tracer("matching-service-uc"),
 	}
 }
 
 func (p *processRideRequestUseCase) Execute(ctx context.Context, event domain.RideRequestEvent) error {
+	ctx, span := p.tracer.Start(ctx, "UseCase.ProcessRideRequested")
+	defer span.End()
+
 	p.logger.Info("Processing Ride Request", zap.String("ride_id", event.RideID))
 
-	candidates, err := p.locationGateway.GetNearestDrivers(ctx, event.PickupLat, event.PickupLng, 3.0, 10)
+	candidates, err := p.locationGateway.GetNearestDrivers(ctx, event.RideID, event.PickupLat, event.PickupLng, 3.0, 10)
 	if err != nil {
 		p.logger.Error("Failed to get nearest drivers", zap.Error(err))
-		return err
+		span.RecordError(err)
+		return errs.ErrInternal.WithMessage("Failed to get nearest drivers").WithRootErr(err)
 	}
 
 	if len(candidates) == 0 {
@@ -66,13 +75,15 @@ func (p *processRideRequestUseCase) Execute(ctx context.Context, event domain.Ri
 
 	if err := p.dispatchRepo.SaveState(ctx, state); err != nil {
 		p.logger.Error("Failed to save dispatch state", zap.Error(err))
-		return err
+		span.RecordError(err)
+		return errs.ErrInternal.WithMessage("Failed to save dispatch state").WithRootErr(err)
 	}
 
 	expireAt := time.Now().Add(15 * time.Second).Unix() // 15 seconds to wait for driver response
 	if err := p.dispatchRepo.SetTimeout(ctx, event.RideID, expireAt); err != nil {
 		p.logger.Error("Failed to set dispatch timeout", zap.Error(err))
-		return err
+		span.RecordError(err)
+		return errs.ErrInternal.WithMessage("Failed to set timeout").WithRootErr(err)
 	}
 
 	p.logger.Info("Successfully pushed to Timeout Queue",

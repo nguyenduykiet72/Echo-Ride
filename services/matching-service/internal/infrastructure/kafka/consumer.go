@@ -44,7 +44,21 @@ type RideConsumer struct {
 	logger    *zap.Logger
 }
 
-func NewRideConsumer(cfg config.KafkaConfig, uc application.ProcessRideRequestUseCase, repo domain.DispatchRepository, logger *zap.Logger) *RideConsumer {
+type RideRequestedWrapper struct {
+	Data struct {
+		ID        string  `json:"id"`
+		RiderID   string  `json:"rider_id"`
+		PickupLat float64 `json:"pickup_lat"`
+		PickupLng float64 `json:"pickup_lng"`
+	} `json:"data"`
+}
+
+func NewRideConsumer(
+	cfg config.KafkaConfig,
+	uc application.ProcessRideRequestUseCase,
+	repo domain.DispatchRepository,
+	logger *zap.Logger,
+) *RideConsumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:  cfg.Brokers,
 		Topic:    cfg.Topic,
@@ -91,7 +105,7 @@ func (c *RideConsumer) processMessage(ctx context.Context, m kafka.Message) {
 		c.reader.CommitMessages(ctx, m) // Bỏ qua và đánh dấu đã đọc
 		return
 	}
-	
+
 	var event IncomingKafkaEvent
 	if err := json.Unmarshal(m.Value, &event); err != nil {
 		c.logger.Error("Failed to unmarshal Kafka message", zap.Error(err), zap.ByteString("message", m.Value))
@@ -129,13 +143,25 @@ func (c *RideConsumer) processMessage(ctx context.Context, m kafka.Message) {
 	case domain.RideEventStatusAccepted:
 		c.handleRideAccepted(spanCtx, m, event)
 	default:
+
+		c.logger.Warn("Ignored unhandled event type",
+			zap.String("event_type", string(event.EventType)),
+			zap.String("event_id", event.EventID))
 		c.reader.CommitMessages(ctx, m)
 	}
 }
 
 func (c *RideConsumer) handleRideRequested(ctx context.Context, m kafka.Message, event IncomingKafkaEvent) {
-	var payload RideRequestedPayload
-	if err := json.Unmarshal(event.EventPayload, &payload); err != nil {
+	var payloadStr string
+	if err := json.Unmarshal(event.EventPayload, &payloadStr); err != nil {
+		c.logger.Error("Failed to unmarshal REQUESTED payload string", zap.Error(err))
+		c.sendToDLQ(ctx, m, "invalid_payload_string")
+		c.reader.CommitMessages(ctx, m)
+		return
+	}
+
+	var payload RideRequestedWrapper
+	if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
 		c.logger.Error("Failed to unmarshal REQUESTED payload", zap.Error(err))
 		c.sendToDLQ(ctx, m, "invalid_payload")
 		c.reader.CommitMessages(ctx, m)
@@ -143,10 +169,10 @@ func (c *RideConsumer) handleRideRequested(ctx context.Context, m kafka.Message,
 	}
 
 	domainEvent := domain.RideRequestEvent{
-		RideID:    payload.ID,
-		RiderID:   payload.RiderID,
-		PickupLat: payload.PickupLat,
-		PickupLng: payload.PickupLng,
+		RideID:    payload.Data.ID,
+		RiderID:   payload.Data.RiderID,
+		PickupLat: payload.Data.PickupLat,
+		PickupLng: payload.Data.PickupLng,
 	}
 
 	maxRetries := 3
@@ -173,14 +199,14 @@ func (c *RideConsumer) handleRideRequested(ctx context.Context, m kafka.Message,
 	}
 
 	if err != nil {
-		c.logger.Error("Failed to process ride request event after retries", zap.Error(err), zap.String("ride_id", payload.ID))
+		c.logger.Error("Failed to process ride request event after retries", zap.Error(err), zap.String("ride_id", payload.Data.ID))
 		c.sendToDLQ(ctx, m, err.Error())
 	}
 
 	if err := c.reader.CommitMessages(ctx, m); err != nil {
-		c.logger.Error("Failed to commit message after processing", zap.Error(err), zap.String("ride_id", payload.ID))
+		c.logger.Error("Failed to commit message after processing", zap.Error(err), zap.String("ride_id", payload.Data.ID))
 	} else {
-		c.logger.Info("Successfully processed and committed message", zap.String("ride_id", payload.ID))
+		c.logger.Info("Successfully processed and committed message", zap.String("ride_id", payload.Data.ID))
 	}
 }
 

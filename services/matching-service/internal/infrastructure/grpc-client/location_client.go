@@ -5,9 +5,11 @@ import (
 	"echo-ride/pkg/errs"
 	pb "echo-ride/pkg/grpc/location/v1"
 	"echo-ride/services/matching-service/internal/domain"
+	"errors"
 	"time"
 
 	"github.com/sony/gobreaker"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -24,7 +26,7 @@ type locationGrpcClient struct {
 }
 
 func NewLocationGrpcClient(targetUrl string, logger *zap.Logger) (domain.LocationGateway, error) {
-	conn, err := grpc.NewClient(targetUrl, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(targetUrl, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		return nil, errs.ErrServiceConnectFailed.WithMessage("Failed to connect to Location Service").WithRootErr(err)
 	}
@@ -51,12 +53,13 @@ func NewLocationGrpcClient(targetUrl string, logger *zap.Logger) (domain.Locatio
 	}, nil
 }
 
-func (l *locationGrpcClient) GetNearestDrivers(ctx context.Context, lat, lng, radiusKm float64, limit int) ([]domain.CandidateDriver, error) {
+func (l *locationGrpcClient) GetNearestDrivers(ctx context.Context, rideID string, lat, lng, radiusKm float64, limit int) ([]domain.CandidateDriver, error) {
 	result, err := l.circuitBreaker.Execute(func() (interface{}, error) {
 		ctxTimeout, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 
 		req := &pb.FindNearestDriversRequest{
+			RideId:    rideID,
 			PickupLat: lat,
 			PickupLng: lng,
 			RadiusKm:  radiusKm,
@@ -65,7 +68,6 @@ func (l *locationGrpcClient) GetNearestDrivers(ctx context.Context, lat, lng, ra
 
 		res, err := l.client.FindNearestDrivers(ctxTimeout, req)
 		if err != nil {
-			l.logger.Error("Failed to find nearest drivers", zap.Error(err))
 			return nil, errs.ErrServiceCallFailed.WithMessage("Failed to call Location Service").WithRootErr(err)
 		}
 
@@ -74,12 +76,13 @@ func (l *locationGrpcClient) GetNearestDrivers(ctx context.Context, lat, lng, ra
 	})
 
 	if err != nil {
-		if err == gobreaker.ErrOpenState {
+		if errors.Is(err, gobreaker.ErrOpenState) {
 			l.logger.Warn("LocationService circuit breaker is open, returning fallback response")
 		} else {
 			l.logger.Error("gRPC call to LocationService failed", zap.Error(err))
 		}
-		return nil, errs.ErrServiceCallFailed.WithMessage("Failed to get nearest drivers").WithRootErr(err)
+		l.logger.Error("gRPC call to LocationService failed", zap.Error(err))
+		return nil, err
 	}
 
 	res, ok := result.(*pb.FindNearestDriversResponse)
@@ -95,6 +98,7 @@ func (l *locationGrpcClient) GetNearestDrivers(ctx context.Context, lat, lng, ra
 			Lat:        d.Lat,
 			Lng:        d.Lng,
 			DistanceKm: d.DistanceKm,
+			Score:      float64(d.EtaSeconds),
 		})
 	}
 

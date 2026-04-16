@@ -43,6 +43,10 @@ func main() {
 
 	dispatchRepo := redisInfra.NewRedisDispatchRepo(redisClient)
 
+	eventPublisher := kafka.NewMatchingPublisher(cfg.Kafka.Brokers, cfg.Kafka.Topic)
+
+	handleTimeoutUC := application.NewHandleTimeoutUseCase(dispatchRepo, eventPublisher, log)
+
 	workerCtx, cancelWorkers := context.WithCancel(context.Background())
 	defer cancelWorkers()
 
@@ -54,7 +58,7 @@ func main() {
 
 	processRideUC := application.NewProcessRideRequestUseCase(locationClient, dispatchRepo, log)
 
-	timeoutWatcher := application.NewTimeoutWatcher(dispatchRepo, log)
+	timeoutWatcher := application.NewTimeoutWatcher(dispatchRepo, handleTimeoutUC, log)
 	go timeoutWatcher.Start(workerCtx)
 
 	rideConsumer := kafka.NewRideConsumer(cfg.Kafka, processRideUC, dispatchRepo, log)
