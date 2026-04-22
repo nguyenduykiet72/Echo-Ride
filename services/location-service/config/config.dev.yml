@@ -12,6 +12,7 @@ kafka:
   brokers:
     - "localhost:9092"
   topic: "ride.events"
+  group_id: "location-service-group"
 
 grpc:
   port: "50052"

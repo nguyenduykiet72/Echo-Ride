@@ -26,6 +26,7 @@ type Querier interface {
 	// WHERE ride_id = $1 AND ride_status = 'REQUESTED'
 	// RETURNING *;
 	UpdateRideStatus(ctx context.Context, arg UpdateRideStatusParams) (TRide, error)
+	UpdateTripStatus(ctx context.Context, arg UpdateTripStatusParams) (TRide, error)
 }
 
 var _ Querier = (*Queries)(nil)

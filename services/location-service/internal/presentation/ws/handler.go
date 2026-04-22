@@ -35,10 +35,10 @@ func NewHandler(hub *Hub, batcher *application.LocationBatcher, logger *zap.Logg
 }
 
 func (h *Handler) ServeWS(ctx *echo.Context) error {
-	driverIDStr := ctx.QueryParam("driver_id")
-	driverID, err := uuid.Parse(driverIDStr)
+	userIDStr := ctx.QueryParam("user_id")
+	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		h.logger.Error("Invalid driver_id", zap.String("driver_id", driverIDStr), zap.Error(err))
+		h.logger.Error("Invalid user_id", zap.String("user_id", userIDStr), zap.Error(err))
 		return errs.ErrInvalidDriverID
 	}
 
@@ -49,11 +49,11 @@ func (h *Handler) ServeWS(ctx *echo.Context) error {
 	}
 
 	client := &Client{
-		Hub:      h.hub,
-		DriverID: driverID,
-		Conn:     conn,
-		Send:     make(chan []byte, 256),
-		Batcher:  h.batcher,
+		Hub:     h.hub,
+		UserID:  userID,
+		Conn:    conn,
+		Send:    make(chan []byte, 256),
+		Batcher: h.batcher,
 	}
 
 	client.Hub.Register <- client

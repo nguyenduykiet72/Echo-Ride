@@ -45,8 +45,6 @@ func main() {
 
 	eventPublisher := kafka.NewMatchingPublisher(cfg.Kafka.Brokers, cfg.Kafka.Topic)
 
-	handleTimeoutUC := application.NewHandleTimeoutUseCase(dispatchRepo, eventPublisher, log)
-
 	workerCtx, cancelWorkers := context.WithCancel(context.Background())
 	defer cancelWorkers()
 
@@ -56,14 +54,18 @@ func main() {
 	}
 	log.Info("Connected to Location Service gRPC")
 
-	processRideUC := application.NewProcessRideRequestUseCase(locationClient, dispatchRepo, log)
+	// Initialize use cases
+	handleTimeoutUC := application.NewHandleTimeoutUseCase(dispatchRepo, eventPublisher, log)
+	processRideUC := application.NewProcessMatchingUseCase(dispatchRepo, locationClient, eventPublisher, log)
+	handleAcceptUC := application.NewHandleRideAcceptedUseCase(dispatchRepo, log)
 
 	timeoutWatcher := application.NewTimeoutWatcher(dispatchRepo, handleTimeoutUC, log)
 	go timeoutWatcher.Start(workerCtx)
 
-	rideConsumer := kafka.NewRideConsumer(cfg.Kafka, processRideUC, dispatchRepo, log)
+	rideConsumer := kafka.NewRideConsumer(cfg.Kafka, processRideUC, handleAcceptUC, dispatchRepo, log)
 	go rideConsumer.Start(workerCtx)
 
+	// Start the HTTP server for health checks
 	e := echo.New()
 	e.GET("/health", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"service": "matching-service", "status": "ok"})

@@ -3,9 +3,9 @@ INSERT INTO
     t_rides (
     ride_rider_id,
     ride_pickup_lat,
-    ride_pickup_lon,
+    ride_pickup_lng,
     ride_dropoff_lat,
-    ride_dropoff_lon,
+    ride_dropoff_lng,
     ride_price
 )
 VALUES
@@ -51,4 +51,15 @@ SET ride_status = 'ACCEPTED'::ride_status,
     ride_updated_at = NOW()
 WHERE ride_id = sqlc.arg(ride_id)
   AND ride_status = 'REQUESTED'::ride_status
+RETURNING *;
+
+-- name: UpdateTripStatus :one
+UPDATE t_rides
+SET
+    ride_status = sqlc.arg('new_status')::ride_status,
+    ride_updated_at = NOW()
+WHERE
+    ride_id = sqlc.arg('ride_id')
+    AND ride_driver_id = sqlc.arg('driver_id')
+    AND ride_status = sqlc.arg('expected_old_status')::ride_status
 RETURNING *;

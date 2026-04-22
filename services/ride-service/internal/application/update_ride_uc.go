@@ -14,8 +14,7 @@ import (
 )
 
 type UpdateRideUseCase interface {
-	AcceptRide(ctx context.Context, rideID, driverID uuid.UUID) (*domain.Ride, error)
-	UpdateStatus(ctx context.Context, rideID uuid.UUID, newStatus string) (*domain.Ride, error)
+	UpdateStatus(ctx context.Context, rideID uuid.UUID, newStatus domain.RideStatus) (*domain.Ride, error)
 	Execute(ctx context.Context, rideID uuid.UUID, newStatus domain.RideStatus) error
 }
 
@@ -33,41 +32,14 @@ func NewUdpateRideUseCase(repo domain.RideRepository, logger *zap.Logger) Update
 	}
 }
 
-func (u *udpateRideUseCase) AcceptRide(ctx context.Context, rideID, driverID uuid.UUID) (*domain.Ride, error) {
-	eventData := map[string]interface{}{
-		"ride_id":        rideID.String(),
-		"ride_driver_id": driverID.String(),
-		"status":         "ACCEPTED",
-	}
-
-	payload := domain.RideEventPayload{
-		EventID:   uuid.New().String(),
-		EventType: domain.EventTypeRideRequested,
-		Timestamp: time.Now().Format(time.RFC3339),
-		Data:      eventData,
-	}
-
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return nil, errs.ErrInternal.WithMessage("Failed to marshal event payload").WithRootErr(err)
-	}
-
-	ride, err := u.repo.AcceptRide(ctx, rideID, driverID, string(domain.EventTypeRideAccepted), payloadBytes)
-	if err != nil {
-		return nil, errs.ErrBadRequest.WithMessage("Ride is no longer available or already accepted").WithRootErr(err)
-	}
-
-	return ride, nil
-}
-
-func (u *udpateRideUseCase) UpdateStatus(ctx context.Context, rideID uuid.UUID, newStatus string) (*domain.Ride, error) {
+func (u *udpateRideUseCase) UpdateStatus(ctx context.Context, rideID uuid.UUID, newStatus domain.RideStatus) (*domain.Ride, error) {
 	currentRide, err := u.repo.GetByID(ctx, rideID)
 	if err != nil {
 		return nil, errs.ErrNotFound.WithMessage("Ride not found").WithRootErr(err)
 	}
 
 	if !isValidStatusTransition(currentRide.Status, newStatus) {
-		return nil, errs.ErrBadRequest.WithMessage("Invalid state transition from " + currentRide.Status + " to " + newStatus)
+		return nil, errs.ErrBadRequest.WithMessage(string("Invalid state transition from " + currentRide.Status + " to " + newStatus))
 	}
 
 	currentRide.Status = newStatus
@@ -92,13 +64,13 @@ func (u *udpateRideUseCase) UpdateStatus(ctx context.Context, rideID uuid.UUID, 
 	return updatedRide, nil
 }
 
-func isValidStatusTransition(current, new string) bool {
-	transitions := map[string]map[string]bool{
-		"REQUESTED":   {"CANCELED": true},
-		"ACCEPTED":    {"IN_PROGRESS": true, "CANCELED": true},
-		"IN_PROGRESS": {"COMPLETED": true, "CANCELED": true},
-		"COMPLETED":   {},
-		"CANCELED":    {},
+func isValidStatusTransition(current, new domain.RideStatus) bool {
+	transitions := map[domain.RideStatus]map[domain.RideStatus]bool{
+		domain.RideStatusRequested:  {domain.RideStatusCancelled: true},
+		domain.RideStatusAccepted:   {domain.RideStatusInProgress: true, domain.RideStatusCancelled: true},
+		domain.RideStatusInProgress: {domain.RideStatusCompleted: true, domain.RideStatusCancelled: true},
+		domain.RideStatusCompleted:  {},
+		domain.RideStatusCancelled:  {},
 	}
 
 	validNextStates, exists := transitions[current]
@@ -123,9 +95,7 @@ func (u *udpateRideUseCase) Execute(ctx context.Context, rideID uuid.UUID, newSt
 		return nil
 	}
 
-	statusStr := string(newStatus)
-
-	_, err = u.repo.UpdateStatus(ctx, rideID, statusStr, "", nil)
+	_, err = u.repo.UpdateStatus(ctx, rideID, newStatus, "", nil)
 	if err != nil {
 		span.RecordError(err)
 		return errs.ErrInternal.WithMessage("Failed to update ride status").WithRootErr(err)

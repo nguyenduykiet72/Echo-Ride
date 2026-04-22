@@ -12,7 +12,7 @@ import (
 type Config struct {
 	Server ServerConfig `yaml:"server"`
 	Redis  RedisConfig  `yaml:"redis"`
-	//Kafka  KafkaConfig  `yaml:"kafka"`
+	Kafka  KafkaConfig  `yaml:"kafka"`
 	Grpc   GrpcConfig   `yaml:"grpc"`
 	Jaeger JaegerConfig `yaml:"jaeger"`
 }
@@ -29,10 +29,11 @@ type RedisConfig struct {
 	DB       int    `yaml:"db" env:"LOCATION_REDIS_DB" env-default:"0"`
 }
 
-//type KafkaConfig struct {
-//	Brokers []string `yaml:"brokers" env:"LOCATION_KAFKA_BROKERS" validate:"required"`
-//	Topic   string   `yaml:"topic" env:"LOCATION_KAFKA_TOPIC" validate:"required"`
-//}
+type KafkaConfig struct {
+	Brokers []string `yaml:"brokers" env:"LOCATION_KAFKA_BROKERS" validate:"required"`
+	Topic   string   `yaml:"topic" env:"LOCATION_KAFKA_TOPIC" validate:"required"`
+	GroupID string   `yaml:"group_id" env:"LOCATION_KAFKA_GROUP_ID" validate:"required"`
+}
 
 type GrpcConfig struct {
 	Port string `yaml:"port" env:"LOCATION_GRPC_PORT" env-default:"9090" validate:"required"`

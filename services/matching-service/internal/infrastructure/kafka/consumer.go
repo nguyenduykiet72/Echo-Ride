@@ -37,11 +37,12 @@ type RideRequestedPayload struct {
 }
 
 type RideConsumer struct {
-	reader    *kafka.Reader
-	dlqWriter *kafka.Writer
-	uc        application.ProcessRideRequestUseCase
-	repo      domain.DispatchRepository
-	logger    *zap.Logger
+	reader         *kafka.Reader
+	dlqWriter      *kafka.Writer
+	uc             application.ProcessMatchingUseCase
+	handleAcceptUC application.HandleRideAcceptedUseCase
+	repo           domain.DispatchRepository
+	logger         *zap.Logger
 }
 
 type RideRequestedWrapper struct {
@@ -55,7 +56,8 @@ type RideRequestedWrapper struct {
 
 func NewRideConsumer(
 	cfg config.KafkaConfig,
-	uc application.ProcessRideRequestUseCase,
+	uc application.ProcessMatchingUseCase,
+	handleAcceptUC application.HandleRideAcceptedUseCase,
 	repo domain.DispatchRepository,
 	logger *zap.Logger,
 ) *RideConsumer {
@@ -74,11 +76,12 @@ func NewRideConsumer(
 	}
 
 	return &RideConsumer{
-		reader:    reader,
-		dlqWriter: dlqWriter,
-		uc:        uc,
-		repo:      repo,
-		logger:    logger,
+		reader:         reader,
+		dlqWriter:      dlqWriter,
+		uc:             uc,
+		handleAcceptUC: handleAcceptUC,
+		repo:           repo,
+		logger:         logger,
 	}
 }
 
@@ -102,7 +105,7 @@ func (c *RideConsumer) Start(ctx context.Context) {
 func (c *RideConsumer) processMessage(ctx context.Context, m kafka.Message) {
 	if len(m.Value) == 0 {
 		c.logger.Debug("Received tombstone message (empty value), skipping", zap.ByteString("key", m.Key))
-		c.reader.CommitMessages(ctx, m) // Bỏ qua và đánh dấu đã đọc
+		c.reader.CommitMessages(ctx, m)
 		return
 	}
 
@@ -143,7 +146,6 @@ func (c *RideConsumer) processMessage(ctx context.Context, m kafka.Message) {
 	case domain.RideEventStatusAccepted:
 		c.handleRideAccepted(spanCtx, m, event)
 	default:
-
 		c.logger.Warn("Ignored unhandled event type",
 			zap.String("event_type", string(event.EventType)),
 			zap.String("event_id", event.EventID))
@@ -214,13 +216,32 @@ func (c *RideConsumer) handleRideAccepted(ctx context.Context, m kafka.Message, 
 	rideID := event.EventAggregateID
 	c.logger.Info("Ride has been ACCEPTED. Stopping dispatcher...", zap.String("ride_id", rideID))
 
-	if err := c.repo.RemoveTimeout(ctx, rideID); err != nil {
-		c.logger.Error("Failed to remove timeout for accepted ride", zap.String("ride_id", rideID), zap.Error(err))
+	maxRetries := 3
+	backoff := 1 * time.Second
+	var err error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err = c.handleAcceptUC.Execute(ctx, rideID)
+		if err == nil {
+			break
+		}
+
+		c.logger.Warn("Failed to execute accept event", zap.Error(err), zap.Int("attempt", attempt))
+		if attempt == maxRetries {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+			backoff *= 2
+		}
 	}
 
-	err := c.repo.DeleteState(ctx, rideID)
 	if err != nil {
-		c.logger.Error("Failed to delete state for accepted ride", zap.String("ride_id", rideID), zap.Error(err))
+		c.logger.Error("Failed to execute HandleRideAcceptedUseCase after retries", zap.Error(err), zap.String("ride_id", rideID))
+		c.sendToDLQ(ctx, m, err.Error())
 	}
 
 	if err := c.reader.CommitMessages(ctx, m); err != nil {

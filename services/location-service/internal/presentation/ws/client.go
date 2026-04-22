@@ -2,8 +2,8 @@ package ws
 
 import (
 	"bytes"
+	"context"
 	"echo-ride/services/location-service/internal/application"
-	"echo-ride/services/location-service/internal/domain"
 	"encoding/json"
 	"log"
 	"time"
@@ -20,11 +20,11 @@ const (
 )
 
 type Client struct {
-	Hub      *Hub
-	DriverID uuid.UUID
-	Conn     *websocket.Conn
-	Send     chan []byte
-	Batcher  *application.LocationBatcher
+	Hub     *Hub
+	UserID  uuid.UUID
+	Conn    *websocket.Conn
+	Send    chan []byte
+	Batcher *application.LocationBatcher
 }
 
 func (c *Client) readPump() {
@@ -49,27 +49,49 @@ func (c *Client) readPump() {
 			break
 		}
 
-		var payload struct {
-			Lat float64 `json:"lat"`
-			Lng float64 `json:"lng"`
+		var rawMsg struct {
+			Type string          `json:"type"`
+			Data json.RawMessage `json:"data"`
 		}
 
-		if err := json.Unmarshal(message, &payload); err != nil {
-			log.Printf("Invalid message format from driver %s: %s", c.DriverID.String(), string(message))
+		if err := json.Unmarshal(message, &rawMsg); err != nil {
+			log.Printf("Invalid base message format from user %s: %s", c.UserID.String(), string(message))
 			continue
 		}
 
-		loc := domain.DriverLocation{
-			DriverID: c.DriverID,
-			Lat:      payload.Lat,
-			Lng:      payload.Lng,
-		}
+		switch rawMsg.Type {
+		case "DRIVER_LOCATION_SYNC":
+			var payload struct {
+				RideID string  `json:"ride_id"`
+				Lat    float64 `json:"lat"`
+				Lng    float64 `json:"lng"`
+			}
+			if err := json.Unmarshal(rawMsg.Data, &payload); err != nil {
+				log.Printf("Invalid location payload from driver %s", c.UserID.String())
+				continue
+			}
 
-		if c.Batcher != nil {
-			c.Batcher.Push(loc)
+			if payload.RideID != "" {
+				locMsg := LocationUpdateMsg{
+					RideID:   payload.RideID,
+					DriverID: c.UserID.String(),
+					Lat:      payload.Lat,
+					Lng:      payload.Lng,
+				}
+				c.Hub.BroadcastLocationToRedis(context.Background(), locMsg)
+			}
+		case "SUBSCRIBE_RIDE":
+			var payload struct {
+				RideID string `json:"ride_id"`
+			}
+			if err := json.Unmarshal(rawMsg.Data, &payload); err != nil || payload.RideID == "" {
+				log.Printf("Invalid subscribe payload from rider %s", c.UserID.String())
+				continue
+			}
+		default:
+			log.Printf("Unknown message type '%s' from user %s", rawMsg.Type, c.UserID.String())
 		}
 	}
-
 }
 
 func (c *Client) writePump() {
