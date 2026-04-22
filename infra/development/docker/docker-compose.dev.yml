@@ -188,10 +188,42 @@ services:
       timeout: 5s
       retries: 3
 
+  cassandra:
+    image: cassandra:5.0
+    container_name: echoRide-cassandra
+    restart: unless-stopped
+    ports:
+      - "9042:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: "echoRideCluster"
+      CASSANDRA_DC: "datacenter1"
+      CASSANDRA_RACK: "rack1"
+      CASSANDRA_ENDPOINT_SNITCH: "GossipingPropertyFileSnitch"
+      CASSANDRA_SEEDS: "cassandra"
+      MAX_HEAP_SIZE: "512M"
+      HEAP_NEWSIZE: "128M"
+      JVM_OPTS: "-Dcassandra.skip_wait_for_gossip_to_settle=0"
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    healthcheck:
+      test: [ "CMD-SHELL", "cqlsh -e 'describe cluster' || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    ulimits: # Cassandra can require high ulimits for file descriptors and memory locking
+      memlock: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      - echoride_network
+
 volumes:
   postgres_data:
   redis_data:
   kafka_data:
+  cassandra_data:
 
 networks:
   echoride_network:

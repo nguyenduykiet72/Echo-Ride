@@ -19,6 +19,7 @@ const (
 	RideStatusINPROGRESS RideStatus = "IN_PROGRESS"
 	RideStatusCOMPLETED  RideStatus = "COMPLETED"
 	RideStatusCANCELLED  RideStatus = "CANCELLED"
+	RideStatusFAILED     RideStatus = "FAILED"
 )
 
 func (e *RideStatus) Scan(src interface{}) error {
@@ -73,9 +74,9 @@ type TRide struct {
 	RideRiderID    pgtype.UUID        `json:"ride_rider_id"`
 	RideDriverID   pgtype.UUID        `json:"ride_driver_id"`
 	RidePickupLat  pgtype.Numeric     `json:"ride_pickup_lat"`
-	RidePickupLon  pgtype.Numeric     `json:"ride_pickup_lon"`
+	RidePickupLng  pgtype.Numeric     `json:"ride_pickup_lng"`
 	RideDropoffLat pgtype.Numeric     `json:"ride_dropoff_lat"`
-	RideDropoffLon pgtype.Numeric     `json:"ride_dropoff_lon"`
+	RideDropoffLng pgtype.Numeric     `json:"ride_dropoff_lng"`
 	RideStatus     RideStatus         `json:"ride_status"`
 	RidePrice      pgtype.Numeric     `json:"ride_price"`
 	RideCreatedAt  pgtype.Timestamptz `json:"ride_created_at"`

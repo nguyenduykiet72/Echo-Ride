@@ -56,10 +56,10 @@ func dbRideToDomain(dbRide dbgen.TRide) *domain.Ride {
 		RiderID:    toUUID(dbRide.RideRiderID),
 		DriverID:   driverID,
 		PickupLat:  numericToFloat64(dbRide.RidePickupLat),
-		PickupLng:  numericToFloat64(dbRide.RidePickupLon),
+		PickupLng:  numericToFloat64(dbRide.RidePickupLng),
 		DropoffLat: numericToFloat64(dbRide.RideDropoffLat),
-		DropoffLng: numericToFloat64(dbRide.RideDropoffLon),
-		Status:     string(dbRide.RideStatus),
+		DropoffLng: numericToFloat64(dbRide.RideDropoffLng),
+		Status:     domain.RideStatus(dbRide.RideStatus),
 		Price:      numericToFloat64(dbRide.RidePrice),
 	}
 }
@@ -78,9 +78,9 @@ func (r *RideRepositoryImpl) Create(ctx context.Context, ride *domain.Ride, even
 	rideParams := dbgen.CreateRideParams{
 		RideRiderID:    toPgtypeUUID(ride.RiderID),
 		RidePickupLat:  toPgtypeNumeric(ride.PickupLat),
-		RidePickupLon:  toPgtypeNumeric(ride.PickupLng),
+		RidePickupLng:  toPgtypeNumeric(ride.PickupLng),
 		RideDropoffLat: toPgtypeNumeric(ride.DropoffLat),
-		RideDropoffLon: toPgtypeNumeric(ride.DropoffLng),
+		RideDropoffLng: toPgtypeNumeric(ride.DropoffLng),
 		RidePrice:      toPgtypeNumeric(ride.Price),
 	}
 
@@ -106,7 +106,7 @@ func (r *RideRepositoryImpl) Create(ctx context.Context, ride *domain.Ride, even
 	}
 
 	ride.ID = toUUID(dbRide.RideID)
-	ride.Status = string(dbRide.RideStatus)
+	ride.Status = domain.RideStatus(dbRide.RideStatus)
 
 	return ride, nil
 }
@@ -196,7 +196,7 @@ func (r *RideRepositoryImpl) AcceptRide(ctx context.Context, rideID, driverID uu
 	return dbRideToDomain(dbRide), nil
 }
 
-func (r *RideRepositoryImpl) UpdateStatus(ctx context.Context, rideID uuid.UUID, status string, eventType string, eventPayload []byte) (*domain.Ride, error) {
+func (r *RideRepositoryImpl) UpdateStatus(ctx context.Context, rideID uuid.UUID, status domain.RideStatus, eventType string, eventPayload []byte) (*domain.Ride, error) {
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
@@ -219,6 +219,49 @@ func (r *RideRepositoryImpl) UpdateStatus(ctx context.Context, rideID uuid.UUID,
 	outboxParams := dbgen.CreateOutboxEventParams{
 		EventAggregateID:   toUUID(dbRide.RideID).String(),
 		EventAggregateType: "ride",
+		EventType:          eventType,
+		EventPayload:       eventPayload,
+	}
+
+	_, err = qtx.CreateOutboxEvent(ctx, outboxParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create outbox event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return dbRideToDomain(dbRide), nil
+}
+
+func (r *RideRepositoryImpl) UpdateTripStatus(ctx context.Context, rideID, driverID uuid.UUID, oldStatus, newStatus domain.RideStatus, eventType string, eventPayload []byte) (*domain.Ride, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := r.q.WithTx(tx)
+
+	updateParams := dbgen.UpdateTripStatusParams{
+		RideID:            toPgtypeUUID(rideID),
+		DriverID:          toPgtypeUUID(driverID),
+		ExpectedOldStatus: dbgen.RideStatus(oldStatus),
+		NewStatus:         dbgen.RideStatus(newStatus),
+	}
+
+	dbRide, err := qtx.UpdateTripStatus(ctx, updateParams)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("conflict: cannot update trip status, invalid state or unauthorized: %w", err)
+		}
+		return nil, fmt.Errorf("failed to update trip status: %w", err)
+	}
+
+	outboxParams := dbgen.CreateOutboxEventParams{
+		EventAggregateID:   toUUID(dbRide.RideID).String(),
+		EventAggregateType: string(domain.OutboxStateRide),
 		EventType:          eventType,
 		EventPayload:       eventPayload,
 	}

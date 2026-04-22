@@ -7,6 +7,21 @@ import (
 	"github.com/google/uuid"
 )
 
+type RideStatus string
+type UserStatus string
+
+const (
+	NewRideStatusAssigned RideStatus = "NEW_RIDE_ASSIGNED"
+)
+
+const (
+	DriverStatusMatched      UserStatus = "DRIVER_MATCHED"
+	RideAcceptStatusAccepted UserStatus = "RIDE_ACCEPTED"
+	InProgressStatus         UserStatus = "IN_PROGRESS"
+	CompletedStatus          UserStatus = "COMPLETED"
+	CancelledStatus          UserStatus = "CANCELLED"
+)
+
 type DriverLocation struct {
 	DriverID   uuid.UUID `json:"driver_id"`
 	Lat        float64   `json:"lat"`

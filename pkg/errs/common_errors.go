@@ -4,6 +4,7 @@ var (
 	ErrNotFound             = NewAppError(404, "Resource not found", "not_found")
 	ErrUnauthorized         = NewAppError(401, "Unauthorized", "unauthorized")
 	ErrBadRequest           = NewAppError(400, "Bad request", "bad_request")
+	ErrConflict             = NewAppError(409, "Conflict", "conflict")
 	ErrInvalidInput         = NewAppError(422, "Invalid input", "invalid_input")
 	ErrInternal             = NewAppError(500, "Internal server error", "internal_error")
 	ErrInvalidArgument      = NewAppError(400, "Invalid argument", "invalid_argument")

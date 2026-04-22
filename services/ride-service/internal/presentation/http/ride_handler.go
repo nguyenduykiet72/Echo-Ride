@@ -16,13 +16,16 @@ type RideHandler struct {
 	createRideUC application.CreateRideUseCase
 	updateRideUC application.UpdateRideUseCase
 	getRideUC    application.GetRideUseCase
+	acceptRideUC application.AcceptRideUseCase
+	updateTripUC application.UpdateTripStatusUseCase
 }
 
-func NewRideHandler(e *echo.Echo, createRideUC application.CreateRideUseCase, updateRideUC application.UpdateRideUseCase, getRideUC application.GetRideUseCase) {
+func NewRideHandler(e *echo.Echo, createRideUC application.CreateRideUseCase, updateRideUC application.UpdateRideUseCase, getRideUC application.GetRideUseCase, acceptRideUC application.AcceptRideUseCase) {
 	handler := &RideHandler{
 		createRideUC: createRideUC,
 		updateRideUC: updateRideUC,
 		getRideUC:    getRideUC,
+		acceptRideUC: acceptRideUC,
 	}
 
 	v1 := e.Group("/api/v1/rides")
@@ -31,6 +34,7 @@ func NewRideHandler(e *echo.Echo, createRideUC application.CreateRideUseCase, up
 	v1.GET("/:id", handler.GetByID)
 	v1.PATCH("/:id/accept", handler.AcceptRide)
 	v1.PATCH("/:id/status", handler.UpdateStatus)
+	v1.PATCH("/:id/trip-status", handler.UpdateTripStatus)
 }
 
 func (h *RideHandler) CreateRide(ctx *echo.Context) error {
@@ -139,11 +143,11 @@ func (h *RideHandler) AcceptRide(ctx *echo.Context) error {
 		return errs.ErrBadRequest.WithMessage("Failed to bind accept ride request").WithRootErr(err)
 	}
 	if err := ctx.Validate(&req); err != nil {
-		return errs.ErrBadRequest.WithMessage("Validation failed").WithRootErr(err)
+		return errs.ErrBadRequest.WithMessage("Validation failed: " + err.Error()).WithRootErr(err)
 	}
 
 	driverID, err := uuid.Parse(req.DriverID)
-	ride, err := h.updateRideUC.AcceptRide(ctx.Request().Context(), rideID, driverID)
+	ride, err := h.acceptRideUC.Execute(ctx.Request().Context(), rideID, driverID)
 	if err != nil {
 		return err
 	}
@@ -172,4 +176,30 @@ func (h *RideHandler) UpdateStatus(ctx *echo.Context) error {
 	}
 
 	return response.WriteSuccess(ctx, http.StatusOK, ride, "Ride status updated")
+}
+
+func (h *RideHandler) UpdateTripStatus(ctx *echo.Context) error {
+	rideIDStr := ctx.Param("id")
+	rideID, err := uuid.Parse(rideIDStr)
+	if err != nil {
+		return errs.ErrInvalidInput.WithMessage("Invalid ride ID")
+	}
+
+	var req updateTripRequest
+	if err := ctx.Bind(&req); err != nil {
+		return errs.ErrInvalidInput.WithRootErr(err)
+	}
+	if err := ctx.Validate(&req); err != nil {
+		return errs.ErrInvalidInput.WithRootErr(err)
+	}
+
+	driverID, _ := uuid.Parse(req.DriverID)
+	status := domain.RideStatus(req.Status)
+
+	ride, err := h.updateTripUC.Execute(ctx.Request().Context(), rideID, driverID, status)
+	if err != nil {
+		return err
+	}
+
+	return response.WriteSuccess(ctx, http.StatusOK, ride, "Trip status updated successfully")
 }

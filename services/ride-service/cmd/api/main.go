@@ -51,11 +51,7 @@ func main() {
 
 	// Start the HTTP server
 	e := newServer(dbPool, log)
-
-	//workerCtx, cancelWorker := context.WithCancel(context.Background())
-	//relayWorker := outbox.NewRelayWorker(dbPool, cfg.Kafka.Brokers, cfg.Kafka.Topic, log)
-	//go relayWorker.Start(workerCtx)
-
+	
 	srvAddr := fmt.Sprintf(":%s", cfg.Server.Port)
 
 	s := http.Server{Addr: srvAddr, Handler: e}

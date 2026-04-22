@@ -53,7 +53,7 @@ func (c *createRideUseCase) Execute(ctx context.Context, req CreateRideCommand) 
 		DropoffLat: req.DropoffLat,
 		DropoffLng: req.DropoffLng,
 		Price:      calculatedPrice,
-		Status:     "REQUESTED",
+		Status:     domain.RideStatusRequested,
 	}
 
 	traceContext := make(map[string]string)
@@ -61,7 +61,7 @@ func (c *createRideUseCase) Execute(ctx context.Context, req CreateRideCommand) 
 
 	payload := domain.RideEventPayload{
 		EventID:      uuid.New().String(),
-		EventType:    "RIDE_REQUESTED",
+		EventType:    domain.EventTypeRideRequested,
 		Timestamp:    time.Now().Format(time.RFC3339),
 		Data:         newRide,
 		TraceContext: traceContext,

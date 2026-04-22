@@ -6,6 +6,7 @@ import (
 	"echo-ride/pkg/tracing"
 	"echo-ride/services/location-service/config"
 	"echo-ride/services/location-service/internal/application"
+	"echo-ride/services/location-service/internal/infrastructure/kafka"
 	"echo-ride/services/location-service/internal/infrastructure/osrm"
 	redisInfra "echo-ride/services/location-service/internal/infrastructure/redis"
 	grpcLocation "echo-ride/services/location-service/internal/presentation/grpc"
@@ -61,8 +62,6 @@ func main() {
 
 	osrmClient := osrm.NewOSRMClient("http://localhost:5000")
 
-	findDriverUC := application.NewFindDriversUseCase(locationRepo, osrmClient)
-
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 
@@ -72,8 +71,14 @@ func main() {
 	locationCleaner := application.NewLocationCleaner(locationRepo, 3*time.Minute, log)
 	go locationCleaner.Start(workerCtx)
 
-	hub := ws.NewHub(log)
+	hub := ws.NewHub(redisClient, log)
 	go hub.Run()
+
+	findDriverUC := application.NewFindDriversUseCase(locationRepo, osrmClient)
+	notifyDriverUC := application.NewNotifyDriverUseCase(hub, log)
+
+	locationConsumer := kafka.NewRideConsumer(cfg.Kafka, notifyDriverUC, log)
+	go locationConsumer.Start(workerCtx)
 
 	wsHandler := ws.NewHandler(hub, batcher, log)
 

@@ -38,7 +38,8 @@ func newServer(dbPool *pgxpool.Pool, log *zap.Logger) *echo.Echo {
 	createRideUC := application.NewCreateRideUseCase(rideRepo)
 	updateRideUC := application.NewUdpateRideUseCase(rideRepo, log)
 	getRideUC := application.NewGetRideUseCase(rideRepo)
-	rideHttp.NewRideHandler(e, createRideUC, updateRideUC, getRideUC)
+	acceptRideUC := application.NewAcceptRideUseCase(rideRepo, log)
+	rideHttp.NewRideHandler(e, createRideUC, updateRideUC, getRideUC, acceptRideUC)
 
 	return e
 }
