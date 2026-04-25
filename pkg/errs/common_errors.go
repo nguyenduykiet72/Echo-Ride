@@ -5,6 +5,7 @@ var (
 	ErrUnauthorized         = NewAppError(401, "Unauthorized", "unauthorized")
 	ErrBadRequest           = NewAppError(400, "Bad request", "bad_request")
 	ErrConflict             = NewAppError(409, "Conflict", "conflict")
+	ErrForbidden            = NewAppError(403, "Forbidden", "forbidden")
 	ErrInvalidInput         = NewAppError(422, "Invalid input", "invalid_input")
 	ErrInternal             = NewAppError(500, "Internal server error", "internal_error")
 	ErrInvalidArgument      = NewAppError(400, "Invalid argument", "invalid_argument")
