@@ -2,6 +2,7 @@ package http
 
 import (
 	"echo-ride/pkg/errs"
+	"echo-ride/pkg/middlewares"
 	"echo-ride/pkg/response"
 	"echo-ride/services/ride-service/internal/application"
 	"echo-ride/services/ride-service/internal/domain"
@@ -29,12 +30,15 @@ func NewRideHandler(e *echo.Echo, createRideUC application.CreateRideUseCase, up
 	}
 
 	v1 := e.Group("/api/v1/rides")
-	v1.POST("", handler.CreateRide)
+
+	v1.Use(middlewares.RequireAuth())
+
+	v1.POST("", handler.CreateRide, middlewares.RequireRole("RIDER"))
 	v1.GET("", handler.ListRides)
 	v1.GET("/:id", handler.GetByID)
-	v1.PATCH("/:id/accept", handler.AcceptRide)
+	v1.PATCH("/:id/accept", handler.AcceptRide, middlewares.RequireRole("DRIVER"))
 	v1.PATCH("/:id/status", handler.UpdateStatus)
-	v1.PATCH("/:id/trip-status", handler.UpdateTripStatus)
+	v1.PATCH("/:id/trip-status", handler.UpdateTripStatus, middlewares.RequireRole("DRIVER"))
 }
 
 func (h *RideHandler) CreateRide(ctx *echo.Context) error {
@@ -67,7 +71,6 @@ func (h *RideHandler) CreateRide(ctx *echo.Context) error {
 		Price:  ride.Price,
 	}
 
-	//return ctx.JSON(201, resp)
 	return response.WriteSuccess(ctx, http.StatusCreated, resp, "Ride created successfully")
 }
 
@@ -138,15 +141,12 @@ func (h *RideHandler) AcceptRide(ctx *echo.Context) error {
 		return errs.ErrBadRequest.WithMessage("Invalid ride ID").WithRootErr(err)
 	}
 
-	var req acceptRideRequest
-	if err := ctx.Bind(&req); err != nil {
-		return errs.ErrBadRequest.WithMessage("Failed to bind accept ride request").WithRootErr(err)
-	}
-	if err := ctx.Validate(&req); err != nil {
-		return errs.ErrBadRequest.WithMessage("Validation failed: " + err.Error()).WithRootErr(err)
+	userIDStr, ok := ctx.Get("userId").(string)
+	if !ok || userIDStr == "" {
+		return errs.ErrUnauthorized.WithMessage("User context not found in context")
 	}
 
-	driverID, err := uuid.Parse(req.DriverID)
+	driverID, err := uuid.Parse(userIDStr)
 	ride, err := h.acceptRideUC.Execute(ctx.Request().Context(), rideID, driverID)
 	if err != nil {
 		return err

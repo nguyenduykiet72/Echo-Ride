@@ -37,16 +37,16 @@ func (a *acceptRideUC) Execute(ctx context.Context, rideID, driverID uuid.UUID) 
 
 	a.logger.Info("Attempting to accept ride", zap.String("rideID", rideID.String()), zap.String("driverID", driverID.String()))
 
-	ride, err := a.repo.GetByID(ctx, driverID)
+	ride, err := a.repo.GetByID(ctx, rideID)
 	if err != nil || ride == nil {
 		return nil, errs.ErrNotFound.WithMessage("Ride not found").WithRootErr(err)
 	}
 
 	eventData := map[string]interface{}{
-		"ride_id":        rideID.String(),
-		"rider_id":       ride.RiderID.String(),
-		"ride_driver_id": driverID.String(),
-		"status":         string(domain.RideStatusAccepted),
+		"ride_id":   rideID.String(),
+		"rider_id":  ride.RiderID.String(),
+		"driver_id": driverID.String(),
+		"status":    string(domain.RideStatusAccepted),
 	}
 
 	payload := domain.RideEventPayload{
