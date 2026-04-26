@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"echo-ride/services/location-service/internal/application"
+	"echo-ride/services/location-service/pkg/jwt"
 	"encoding/json"
 	"log"
 	"time"
@@ -17,24 +18,29 @@ const (
 	pongWait       = 60 * time.Second
 	pingPeriod     = (pongWait * 9) / 10
 	maxMessageSize = 512
+	authTimeout    = 5 * time.Second
 )
 
 type Client struct {
-	Hub     *Hub
-	UserID  uuid.UUID
-	Conn    *websocket.Conn
-	Send    chan []byte
-	Batcher *application.LocationBatcher
+	Hub             *Hub
+	UserID          uuid.UUID
+	Conn            *websocket.Conn
+	Send            chan []byte
+	Batcher         *application.LocationBatcher
+	jwtSecret       string
+	isAuthenticated bool
 }
 
 func (c *Client) readPump() {
 	defer func() {
-		c.Hub.Unregister <- c
+		if c.isAuthenticated {
+			c.Hub.Unregister <- c
+		}
 		c.Conn.Close()
 	}()
 
 	c.Conn.SetReadLimit(maxMessageSize)
-	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.Conn.SetReadDeadline(time.Now().Add(authTimeout))
 	c.Conn.SetPongHandler(func(string) error {
 		c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
@@ -59,6 +65,40 @@ func (c *Client) readPump() {
 			continue
 		}
 
+		if !c.isAuthenticated {
+			if rawMsg.Type != "AUTH" {
+				log.Printf("Unauthenticated message type '%s' from user %s", rawMsg.Type, c.UserID.String())
+				break
+			}
+
+			var authPayload struct {
+				Token string `json:"token"`
+			}
+			if err := json.Unmarshal(rawMsg.Data, &authPayload); err != nil {
+				log.Println("Invalid auth payload")
+				break
+			}
+
+			userID, err := jwt.VerifyAndExtractUserID(authPayload.Token, c.jwtSecret)
+			if err != nil {
+				log.Printf("Token verification failed: %v", err)
+				break
+			}
+
+			c.UserID = userID
+			c.isAuthenticated = true
+			c.Hub.Register <- c
+
+			c.Conn.SetReadDeadline(time.Now().Add(pongWait))
+
+			authSuccessMsg, _ := json.Marshal(map[string]string{
+				"type": "AUTH_SUCCESS",
+			})
+			c.Send <- authSuccessMsg
+
+			continue
+		}
+
 		switch rawMsg.Type {
 		case "DRIVER_LOCATION_SYNC":
 			var payload struct {
@@ -80,6 +120,11 @@ func (c *Client) readPump() {
 				}
 				c.Hub.BroadcastLocationToRedis(context.Background(), locMsg)
 			}
+
+			if c.Batcher != nil {
+				// Add location to batcher for potential batch processing
+			}
+
 		case "SUBSCRIBE_RIDE":
 			var payload struct {
 				RideID string `json:"ride_id"`
@@ -88,6 +133,8 @@ func (c *Client) readPump() {
 				log.Printf("Invalid subscribe payload from rider %s", c.UserID.String())
 				continue
 			}
+
+			c.Hub.SubscribeToRideTracking(context.Background(), c.UserID, payload.RideID)
 		default:
 			log.Printf("Unknown message type '%s' from user %s", rawMsg.Type, c.UserID.String())
 		}

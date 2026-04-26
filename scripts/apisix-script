@@ -1,0 +1,62 @@
+// this creates a route for the Auth Service in APISIX, allowing the API Gateway to forward authentication requests to the Auth Service
+curl http://localhost:9180/apisix/admin/routes/auth-route -H 'X-API-KEY: your-api-key' -X PUT -d '
+{
+    "name": "Auth Service Route",
+    "uri": "/api/v1/auth/*",
+    "upstream": {
+        "type": "roundrobin",
+        "nodes": {
+            "host.docker.internal:your-auth-port": 1
+        }
+    }
+}'
+
+// this creates a consumer with JWT credentials for the API Gateway to authenticate requests to the Ride Service
+curl http://localhost:9180/apisix/admin/consumers -H 'X-API-KEY: your-api-key' -X PUT -d '
+{
+    "username": "echoride-gateway",
+    "plugins": {
+        "jwt-auth": {
+            "key": "echo-auth-service",
+            "secret": "your-jwt-secret"
+        }
+    }
+}'
+
+// this creates a route for the Ride Service in APISIX, allowing the API Gateway to forward ride-related requests to the Ride Service, while also enforcing JWT authentication and adding user information to the request headers
+curl http://localhost:9180/apisix/admin/routes/ride-route -H 'X-API-KEY: your-api-key' -X PUT -d '
+{
+    "name": "Ride Service Route",
+    "uri": "/api/v1/rides*",
+    "plugins": {
+        "jwt-auth": {},
+        "proxy-rewrite": {
+            "headers": {
+                "set": {
+                    "X-User-Id": "$jwt_claim_sub",
+                    "X-User-Role": "$jwt_claim_role"
+                }
+            }
+        }
+    },
+    "upstream": {
+        "type": "roundrobin",
+        "nodes": {
+            "host.docker.internal:8081": 1
+        }
+    }
+}'
+
+// this creates a route for the Location Service in APISIX, allowing the API Gateway to forward WebSocket requests to the Location Service, while also enabling WebSocket support
+curl http://localhost:9180/apisix/admin/routes/location-ws-route -H 'X-API-KEY: your-api-key' -X PUT -d '
+{
+    "name": "Location Service WebSocket",
+    "uri": "/ws*",
+    "enable_websocket": true,
+    "upstream": {
+        "type": "roundrobin",
+        "nodes": {
+            "host.docker.internal:8083": 1
+        }
+    }
+}'

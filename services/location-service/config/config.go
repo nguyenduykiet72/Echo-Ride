@@ -15,6 +15,7 @@ type Config struct {
 	Kafka  KafkaConfig  `yaml:"kafka"`
 	Grpc   GrpcConfig   `yaml:"grpc"`
 	Jaeger JaegerConfig `yaml:"jaeger"`
+	JWT    JWTConfig    `yaml:"jwt"`
 }
 
 type ServerConfig struct {
@@ -40,8 +41,13 @@ type GrpcConfig struct {
 }
 
 type JaegerConfig struct {
-	AgentHost string `yaml:"service_host" env:"RIDE_JAEGER_AGENT_HOST" env-default:"localhost" validate:"required"`
-	AgentPort int    `yaml:"service_port" env:"RIDE_JAEGER_AGENT_PORT" env-default:"4317" validate:"required"`
+	AgentHost string `yaml:"service_host" env:"LOCATION_JAEGER_AGENT_HOST" env-default:"localhost" validate:"required"`
+	AgentPort int    `yaml:"service_port" env:"LOCATION_JAEGER_AGENT_PORT" env-default:"4317" validate:"required"`
+}
+
+type JWTConfig struct {
+	SecretKey      string `yaml:"secret" env:"LOCATION_JWT_SECRET" validate:"required"`
+	ExpirationTime int    `yaml:"expiration_time" env:"LOCATION_JWT_EXPIRATION_TIME" env-default:"1440" validate:"required"` // in minutes
 }
 
 func Load() (*Config, error) {

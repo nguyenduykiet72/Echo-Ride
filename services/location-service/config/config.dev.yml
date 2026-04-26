@@ -20,3 +20,7 @@ grpc:
 jaeger:
   service_host: "localhost"
   service_port: 4317
+
+jwt:
+  secret: "mysecretkey"
+  expiration_time: 3600   
