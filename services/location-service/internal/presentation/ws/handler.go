@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
@@ -21,27 +20,22 @@ var upgrader = websocket.Upgrader{
 }
 
 type Handler struct {
-	hub     *Hub
-	batcher *application.LocationBatcher
-	logger  *zap.Logger
+	hub       *Hub
+	batcher   *application.LocationBatcher
+	logger    *zap.Logger
+	jwtSecret string
 }
 
-func NewHandler(hub *Hub, batcher *application.LocationBatcher, logger *zap.Logger) *Handler {
+func NewHandler(hub *Hub, batcher *application.LocationBatcher, jwtSecret string, logger *zap.Logger) *Handler {
 	return &Handler{
-		hub:     hub,
-		batcher: batcher,
-		logger:  logger,
+		hub:       hub,
+		batcher:   batcher,
+		logger:    logger,
+		jwtSecret: jwtSecret,
 	}
 }
 
 func (h *Handler) ServeWS(ctx *echo.Context) error {
-	userIDStr := ctx.QueryParam("user_id")
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		h.logger.Error("Invalid user_id", zap.String("user_id", userIDStr), zap.Error(err))
-		return errs.ErrInvalidDriverID
-	}
-
 	conn, err := upgrader.Upgrade(ctx.Response(), ctx.Request(), nil)
 	if err != nil {
 		h.logger.Error("Failed to upgrade to websocket", zap.Error(err))
@@ -49,15 +43,15 @@ func (h *Handler) ServeWS(ctx *echo.Context) error {
 	}
 
 	client := &Client{
-		Hub:     h.hub,
-		UserID:  userID,
-		Conn:    conn,
-		Send:    make(chan []byte, 256),
-		Batcher: h.batcher,
+		Hub: h.hub,
+		//UserID,
+		Conn:            conn,
+		Send:            make(chan []byte, 256),
+		Batcher:         h.batcher,
+		jwtSecret:       h.jwtSecret,
+		isAuthenticated: false,
 	}
-
-	client.Hub.Register <- client
-
+	
 	go client.writePump()
 	go client.readPump()
 

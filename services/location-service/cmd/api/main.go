@@ -80,7 +80,7 @@ func main() {
 	locationConsumer := kafka.NewRideConsumer(cfg.Kafka, notifyDriverUC, log)
 	go locationConsumer.Start(workerCtx)
 
-	wsHandler := ws.NewHandler(hub, batcher, log)
+	wsHandler := ws.NewHandler(hub, batcher, cfg.JWT.SecretKey, log)
 
 	e := newServer(wsHandler, log)
 
