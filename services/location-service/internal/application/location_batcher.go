@@ -9,20 +9,23 @@ import (
 )
 
 type LocationBatcher struct {
-	repo          domain.LocationRepository
-	inputChan     chan domain.DriverLocation
-	batchSize     int
-	flushInterval time.Duration // how often to flush the batch even if it's not full
-	logger        *zap.Logger
+	locationHistoryRepo domain.LocationHistoryRepository
+	activeDriverRepo    domain.ActiveDriverRepository
+	inputChan           chan domain.DriverLocation
+	batchSize           int
+	flushInterval       time.Duration // how often to flush the batch even if it's not full
+	logger              *zap.Logger
+	buffer              []domain.DriverLocation
 }
 
-func NewLocationBatcher(repo domain.LocationRepository, logger *zap.Logger) *LocationBatcher {
+func NewLocationBatcher(locationHistoryRepo domain.LocationHistoryRepository, activeDriverRepo domain.ActiveDriverRepository, logger *zap.Logger) *LocationBatcher {
 	return &LocationBatcher{
-		repo:          repo,
-		inputChan:     make(chan domain.DriverLocation, 5000), // buffered channel to handle bursts
-		batchSize:     500,                                    // batch size of 100 locations
-		flushInterval: 500 * time.Millisecond,                 // flush every 5 seconds if batch is not full
-		logger:        logger,
+		locationHistoryRepo: locationHistoryRepo,
+		activeDriverRepo:    activeDriverRepo,
+		inputChan:           make(chan domain.DriverLocation, 5000), // buffered channel to handle bursts
+		batchSize:           500,                                    // batch size of 100 locations
+		flushInterval:       500 * time.Millisecond,                 // flush every 5 seconds if batch is not full
+		logger:              logger,
 	}
 }
 
@@ -68,11 +71,18 @@ func (b *LocationBatcher) flush(locations []domain.DriverLocation) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	err := b.repo.SaveLocationBatch(ctx, locations)
-	if err != nil {
-		b.logger.Error("Failed to save location batch", zap.Int("batch_size", len(locations)), zap.Error(err))
+	errCassandra := b.locationHistoryRepo.SaveLocationBatch(ctx, locations)
+	if errCassandra != nil {
+		b.logger.Error("Failed to save location batch to Cassandra", zap.Error(errCassandra))
 	} else {
-		b.logger.Debug("Flushed locations to Redis", zap.Int("batch_size", len(locations)))
+		b.logger.Debug("Flushed locations to Cassandra", zap.Int("batch_size", len(locations)))
+	}
+
+	errRedis := b.activeDriverRepo.UpsertActiveLocation(ctx, locations)
+	if errRedis != nil {
+		b.logger.Error("Failed to upsert active locations to Redis", zap.Error(errRedis))
+	} else {
+		b.logger.Debug("Upserted active locations to Redis", zap.Int("batch_size", len(locations)))
 	}
 
 }

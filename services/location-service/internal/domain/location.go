@@ -23,10 +23,12 @@ const (
 )
 
 type DriverLocation struct {
+	RideID     uuid.UUID `json:"ride_id"`
 	DriverID   uuid.UUID `json:"driver_id"`
 	Lat        float64   `json:"lat"`
 	Lng        float64   `json:"lng"`
 	DistanceKm float64   `json:"distance_km,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type LocationRequest struct {
@@ -45,11 +47,15 @@ type DriverETA struct {
 	Distance float64
 }
 
-type LocationRepository interface {
-	SaveLocationBatch(ctx context.Context, locations []DriverLocation) error
+type ActiveDriverRepository interface {
+	UpsertActiveLocation(ctx context.Context, locations []DriverLocation) error
 	RemoveStaleDrivers(ctx context.Context, olderThan time.Time) (int64, error)
 	FindNearestDrivers(ctx context.Context, lat, lng, radius float64, limit int) ([]DriverLocation, error)
 	FindDriversInRadius(ctx context.Context, lat, lng, radius float64, limit int) ([]DriverLocation, error)
+}
+
+type LocationHistoryRepository interface {
+	SaveLocationBatch(ctx context.Context, locations []DriverLocation) error
 }
 
 type RoutingService interface {

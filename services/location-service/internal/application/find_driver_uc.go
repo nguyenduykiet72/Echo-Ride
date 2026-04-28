@@ -16,12 +16,12 @@ type FindDriversUseCase interface {
 }
 
 type findDriversUseCase struct {
-	repo           domain.LocationRepository
+	repo           domain.ActiveDriverRepository
 	routingService domain.RoutingService
 	tracer         trace.Tracer
 }
 
-func NewFindDriversUseCase(repo domain.LocationRepository, routing domain.RoutingService) FindDriversUseCase {
+func NewFindDriversUseCase(repo domain.ActiveDriverRepository, routing domain.RoutingService) FindDriversUseCase {
 	return &findDriversUseCase{
 		repo:           repo,
 		routingService: routing,

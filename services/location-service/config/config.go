@@ -10,12 +10,14 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig `yaml:"server"`
-	Redis  RedisConfig  `yaml:"redis"`
-	Kafka  KafkaConfig  `yaml:"kafka"`
-	Grpc   GrpcConfig   `yaml:"grpc"`
-	Jaeger JaegerConfig `yaml:"jaeger"`
-	JWT    JWTConfig    `yaml:"jwt"`
+	Server    ServerConfig    `yaml:"server"`
+	Redis     RedisConfig     `yaml:"redis"`
+	Kafka     KafkaConfig     `yaml:"kafka"`
+	Grpc      GrpcConfig      `yaml:"grpc"`
+	Jaeger    JaegerConfig    `yaml:"jaeger"`
+	JWT       JWTConfig       `yaml:"jwt"`
+	Cassandra CassandraConfig `yaml:"cassandra"`
+	OSRM      OSRMConfig      `yaml:"osrm"`
 }
 
 type ServerConfig struct {
@@ -48,6 +50,18 @@ type JaegerConfig struct {
 type JWTConfig struct {
 	SecretKey      string `yaml:"secret" env:"LOCATION_JWT_SECRET" validate:"required"`
 	ExpirationTime int    `yaml:"expiration_time" env:"LOCATION_JWT_EXPIRATION_TIME" env-default:"1440" validate:"required"` // in minutes
+}
+
+type CassandraConfig struct {
+	Host string `yaml:"host" env:"LOCATION_CASSANDRA_HOST" validate:"required"`
+	//Port     int    `yaml:"port" env:"LOCATION_CASSANDRA_PORT" validate:"required"`
+	Keyspace string `yaml:"keyspace" env:"LOCATION_CASSANDRA_KEYSPACE" validate:"required"`
+	//User     string `yaml:"username" env:"LOCATION_CASSANDRA_USER" validate:"required"`
+	//Password string `yaml:"password" env:"LOCATION_CASSANDRA_PASSWORD" validate:"required"`
+}
+
+type OSRMConfig struct {
+	BaseURL string `yaml:"base_url" env:"LOCATION_OSRM_BASE_URL" env-default:"http://localhost:5000" validate:"required"`
 }
 
 func Load() (*Config, error) {

@@ -1,0 +1,13 @@
+{
+  "project_info": {
+    "name": "000001_init_driver_locations.up.cql",
+    "path": "/home/elliot/Documents/Personal/Work/Go-EchoRide/services/location-service/internal/infrastructure/db/cassandra/migrations/000001_init_driver_locations.up.cql",
+    "generated_at": "2026-04-27T00:03:58.756753611",
+    "total_files": 0,
+    "total_size": 0
+  },
+  "structure": {
+  },
+  "files": [
+  ]
+}
