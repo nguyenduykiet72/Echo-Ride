@@ -9,12 +9,12 @@ import (
 )
 
 type LocationCleaner struct {
-	repo    domain.LocationRepository
+	repo    domain.ActiveDriverRepository
 	timeout time.Duration
 	logger  *zap.Logger
 }
 
-func NewLocationCleaner(repo domain.LocationRepository, timeout time.Duration, logger *zap.Logger) *LocationCleaner {
+func NewLocationCleaner(repo domain.ActiveDriverRepository, timeout time.Duration, logger *zap.Logger) *LocationCleaner {
 	return &LocationCleaner{
 		repo:    repo,
 		timeout: timeout,

@@ -6,9 +6,11 @@ import (
 	"echo-ride/pkg/tracing"
 	"echo-ride/services/location-service/config"
 	"echo-ride/services/location-service/internal/application"
+	"echo-ride/services/location-service/internal/infrastructure/db/cassandra"
 	"echo-ride/services/location-service/internal/infrastructure/kafka"
 	"echo-ride/services/location-service/internal/infrastructure/osrm"
 	redisInfra "echo-ride/services/location-service/internal/infrastructure/redis"
+	cassandraInfra "echo-ride/services/location-service/internal/infrastructure/repository/cassandra"
 	grpcLocation "echo-ride/services/location-service/internal/presentation/grpc"
 	"echo-ride/services/location-service/internal/presentation/ws"
 	"echo-ride/services/location-service/pkg/logger"
@@ -58,23 +60,30 @@ func main() {
 	}
 	defer redisClient.Close()
 
-	locationRepo := redisInfra.NewRedisLocationRepo(redisClient)
+	cassandraSession, err := cassandra.NewCassandraSession(cfg.Cassandra, log)
+	if err != nil {
+		log.Fatal("Failed to create Cassandra session", zap.Error(err))
+	}
+	defer cassandraSession.Close()
+
+	redisLocationRepo := redisInfra.NewRedisLocationRepo(redisClient)
+	cassandraLocationRepo := cassandraInfra.NewCassandraLocationRepository(cassandraSession)
 
 	osrmClient := osrm.NewOSRMClient("http://localhost:5000")
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 
-	batcher := application.NewLocationBatcher(locationRepo, log)
+	batcher := application.NewLocationBatcher(cassandraLocationRepo, redisLocationRepo, log)
 	go batcher.Start(workerCtx)
 
-	locationCleaner := application.NewLocationCleaner(locationRepo, 3*time.Minute, log)
+	locationCleaner := application.NewLocationCleaner(redisLocationRepo, 3*time.Minute, log)
 	go locationCleaner.Start(workerCtx)
 
 	hub := ws.NewHub(redisClient, log)
 	go hub.Run()
 
-	findDriverUC := application.NewFindDriversUseCase(locationRepo, osrmClient)
+	findDriverUC := application.NewFindDriversUseCase(redisLocationRepo, osrmClient)
 	notifyDriverUC := application.NewNotifyDriverUseCase(hub, log)
 
 	locationConsumer := kafka.NewRideConsumer(cfg.Kafka, notifyDriverUC, log)

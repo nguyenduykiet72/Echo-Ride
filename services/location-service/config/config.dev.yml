@@ -23,4 +23,11 @@ jaeger:
 
 jwt:
   secret: "mysecretkey"
-  expiration_time: 3600   
+  expiration_time: 3600
+
+cassandra:
+  host: "127.0.0.1"
+  keyspace: "echoride_location"
+
+osrm:
+  base_url: "http://localhost:5000" # Change to http://echoRide-osrm:5000 if using Docker

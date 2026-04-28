@@ -43,10 +43,10 @@ func (o *osrmClient) CalculateETAMatrix(ctx context.Context, originLat, originLn
 		return nil, nil
 	}
 
-	coords := []string{fmt.Sprintf("%f,%f", originLat, originLng)}
+	coords := []string{fmt.Sprintf("%f,%f", originLng, originLat)}
 
 	for _, dest := range destinations {
-		coords = append(coords, fmt.Sprintf("%f,%f", dest.Lat, dest.Lng))
+		coords = append(coords, fmt.Sprintf("%f,%f", dest.Lng, dest.Lat))
 	}
 
 	coordString := strings.Join(coords, ";")
@@ -78,16 +78,6 @@ func (o *osrmClient) CalculateETAMatrix(ctx context.Context, originLat, originLn
 	}
 
 	var etas []domain.DriverETA
-	//for i, dest := range destinations {
-	//	eta := domain.DriverETA{
-	//		DriverID: dest.DriverID,
-	//		Lat:      dest.Lat,
-	//		Lng:      dest.Lng,
-	//		ETA:      tableResp.Durations[0][i+1], // +1 because the first entry is the origin
-	//		Distance: tableResp.Distances[0][i+1],
-	//	}
-	//	etas = append(etas, eta)
-	//}
 	for i, dest := range destinations {
 		durationIndex := i + 1 // +1 because the first entry is the origin
 

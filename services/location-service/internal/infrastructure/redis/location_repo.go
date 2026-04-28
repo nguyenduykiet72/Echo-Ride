@@ -19,11 +19,11 @@ type redisLocationRepo struct {
 	client *redis.Client
 }
 
-func NewRedisLocationRepo(client *redis.Client) domain.LocationRepository {
+func NewRedisLocationRepo(client *redis.Client) domain.ActiveDriverRepository {
 	return &redisLocationRepo{client: client}
 }
 
-func (r *redisLocationRepo) SaveLocationBatch(ctx context.Context, locations []domain.DriverLocation) error {
+func (r *redisLocationRepo) UpsertActiveLocation(ctx context.Context, locations []domain.DriverLocation) error {
 	if len(locations) == 0 {
 		return nil
 	}
@@ -40,7 +40,7 @@ func (r *redisLocationRepo) SaveLocationBatch(ctx context.Context, locations []d
 
 		pipe.ZAdd(ctx, DriverTimestampKey, redis.Z{
 			Score:  now,
-			Member: loc.DriverID,
+			Member: loc.DriverID.String(),
 		})
 	}
 
@@ -112,7 +112,7 @@ func (r *redisLocationRepo) FindNearestDrivers(ctx context.Context, lat, lng, ra
 		if err != nil {
 			continue
 		}
-		
+
 		drivers = append(drivers, domain.DriverLocation{
 			DriverID:   parsedDriverID,
 			Lat:        loc.Latitude,
