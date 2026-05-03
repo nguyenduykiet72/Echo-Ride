@@ -29,5 +29,5 @@ type updateStatusRequest struct {
 
 type updateTripRequest struct {
 	DriverID string `json:"driver_id" validate:"required,uuid"`
-	Status   string `json:"status" validate:"required,oneof=IN_PROGRESS COMPLETED"` // Bắt buộc chỉ được 2 trạng thái này
+	Status   string `json:"status" validate:"required,oneof=IN_PROGRESS COMPLETED"`
 }

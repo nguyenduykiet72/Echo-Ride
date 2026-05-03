@@ -34,7 +34,7 @@ func newServer(wsHandler *ws.Handler, log *zap.Logger) *echo.Echo {
 	e.GET("/health", func(c *echo.Context) error {
 		return response.WriteSuccess(c, http.StatusOK, map[string]string{"service": "location-service"}, "Health check successful")
 	})
-	
+
 	e.GET("/ws", wsHandler.ServeWS)
 
 	return e

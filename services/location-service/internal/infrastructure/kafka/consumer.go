@@ -6,7 +6,6 @@ import (
 	"echo-ride/services/location-service/internal/application"
 	"echo-ride/services/location-service/internal/domain"
 	"encoding/json"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
@@ -38,12 +37,22 @@ type TripStatusPayload struct {
 }
 
 type RideConsumer struct {
-	reader   *kafka.Reader
-	notifyUC application.NotifyUserUseCase
-	logger   *zap.Logger
+	reader      *kafka.Reader
+	notifyUC    application.NotifyUserUseCase
+	// trackingSub subscribes a rider's active WS connection to the Redis
+	// Pub/Sub channel for their ride as soon as the ride is accepted, so no
+	// location frames are lost between the "accepted" notification and the
+	// rider app manually sending SUBSCRIBE_RIDE.
+	trackingSub application.RideTrackingSubscriber
+	logger      *zap.Logger
 }
 
-func NewRideConsumer(cfg config.KafkaConfig, notifyUC application.NotifyUserUseCase, logger *zap.Logger) *RideConsumer {
+func NewRideConsumer(
+	cfg config.KafkaConfig,
+	notifyUC application.NotifyUserUseCase,
+	trackingSub application.RideTrackingSubscriber,
+	logger *zap.Logger,
+) *RideConsumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:  cfg.Brokers,
 		Topic:    cfg.Topic,
@@ -53,9 +62,10 @@ func NewRideConsumer(cfg config.KafkaConfig, notifyUC application.NotifyUserUseC
 	})
 
 	return &RideConsumer{
-		reader:   reader,
-		notifyUC: notifyUC,
-		logger:   logger,
+		reader:      reader,
+		notifyUC:    notifyUC,
+		trackingSub: trackingSub,
+		logger:      logger,
 	}
 }
 
@@ -65,7 +75,7 @@ func (c *RideConsumer) Start(ctx context.Context) {
 	for {
 		m, err := c.reader.FetchMessage(ctx)
 		if err != nil {
-			if strings.Contains(err.Error(), "context canceled") {
+			if ctx.Err() != nil {
 				break
 			}
 			c.logger.Warn("Failed to fetch Message", zap.Error(err))
@@ -131,15 +141,28 @@ func (c *RideConsumer) handleRideAccepted(ctx context.Context, m kafka.Message, 
 
 	riderUUID, err := uuid.Parse(payload.RiderID)
 	if err != nil {
+		c.logger.Error("Failed to parse rider UUID", zap.Error(err), zap.String("rider_id", payload.RiderID))
 		c.reader.CommitMessages(ctx, m)
 		return
 	}
 
-	err = c.notifyUC.Execute(ctx, riderUUID, "RIDE_STATUS_ACCEPTED", map[string]string{
+	// Notify rider that their ride has been accepted.
+	_ = c.notifyUC.Execute(ctx, riderUUID, "RIDE_STATUS_ACCEPTED", map[string]string{
 		"ride_id":   payload.RideID,
 		"driver_id": payload.DriverID,
 		"message":   "Your ride has been accepted by a driver",
 	})
+
+	// Auto-subscribe the rider's WS connection to the live-tracking channel
+	// so that driver location frames start arriving immediately — no separate
+	// SUBSCRIBE_RIDE message from the client app required.
+	if payload.RideID != "" {
+		c.trackingSub.SubscribeToRideTracking(ctx, riderUUID, payload.RideID)
+		c.logger.Info("Auto-subscribed rider to ride tracking",
+			zap.String("rider_id", payload.RiderID),
+			zap.String("ride_id", payload.RideID),
+		)
+	}
 
 	c.reader.CommitMessages(ctx, m)
 }

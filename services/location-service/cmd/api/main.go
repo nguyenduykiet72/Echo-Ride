@@ -85,11 +85,12 @@ func main() {
 
 	findDriverUC := application.NewFindDriversUseCase(redisLocationRepo, osrmClient)
 	notifyDriverUC := application.NewNotifyDriverUseCase(hub, log)
+	updateLocationUC := application.NewUpdateDriverLocationUseCase(batcher, hub, log)
 
-	locationConsumer := kafka.NewRideConsumer(cfg.Kafka, notifyDriverUC, log)
+	locationConsumer := kafka.NewRideConsumer(cfg.Kafka, notifyDriverUC, hub, log)
 	go locationConsumer.Start(workerCtx)
 
-	wsHandler := ws.NewHandler(hub, batcher, cfg.JWT.SecretKey, log)
+	wsHandler := ws.NewHandler(hub, updateLocationUC, cfg.JWT.SecretKey, log)
 
 	e := newServer(wsHandler, log)
 

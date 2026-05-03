@@ -34,18 +34,20 @@ type appUseCases struct {
 	acceptRide   application.AcceptRideUseCase
 	updateTrip   application.UpdateTripStatusUseCase
 	cancelRide   application.CanceledRideUC
+	declineRide  application.DeclineRideUC
 }
 
 func buildUseCases(dbPool *pgxpool.Pool, log *zap.Logger) *appUseCases {
 	repo := repository.NewRideRepository(dbPool)
 	return &appUseCases{
-		repo:       repo,
-		createRide: application.NewCreateRideUseCase(repo),
-		updateRide: application.NewUdpateRideUseCase(repo, log),
-		getRide:    application.NewGetRideUseCase(repo),
-		acceptRide: application.NewAcceptRideUseCase(repo, log),
-		updateTrip: application.NewUpdateTripStatusUseCase(repo, log),
-		cancelRide: application.NewCancelRideUseCase(repo, log),
+		repo:        repo,
+		createRide:  application.NewCreateRideUseCase(repo),
+		updateRide:  application.NewUdpateRideUseCase(repo, log),
+		getRide:     application.NewGetRideUseCase(repo),
+		acceptRide:  application.NewAcceptRideUseCase(repo, log),
+		updateTrip:  application.NewUpdateTripStatusUseCase(repo, log),
+		cancelRide:  application.NewCancelRideUseCase(repo, log),
+		declineRide: application.NewDeclineRideUseCase(repo, log),
 	}
 }
 
@@ -60,7 +62,7 @@ func newServer(uc *appUseCases, log *zap.Logger) *echo.Echo {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok", "service": "ride-service"})
 	})
 
-	rideHttp.NewRideHandler(e, uc.createRide, uc.updateRide, uc.getRide, uc.acceptRide, uc.updateTrip, uc.cancelRide)
+	rideHttp.NewRideHandler(e, uc.createRide, uc.updateRide, uc.getRide, uc.acceptRide, uc.updateTrip, uc.cancelRide, uc.declineRide)
 
 	return e
 }

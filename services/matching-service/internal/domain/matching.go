@@ -28,6 +28,7 @@ const (
 	RideEventStatusInProgress RideEventStatus = "IN_PROGRESS"
 	RideEventStatusCompleted  RideEventStatus = "RIDE_COMPLETED"
 	RideEventStatusCancelled  RideEventStatus = "RIDE_CANCELLED"
+	RideEventStatusDeclined   RideEventStatus = "RIDE_DECLINED"
 	RideDriverMatched         RideEventStatus = "DRIVER_MATCHED"
 )
 

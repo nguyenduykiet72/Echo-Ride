@@ -27,6 +27,8 @@ type DriverLocation struct {
 	DriverID   uuid.UUID `json:"driver_id"`
 	Lat        float64   `json:"lat"`
 	Lng        float64   `json:"lng"`
+	Bearing    float32   `json:"bearing,omitempty"`
+	Speed      float32   `json:"speed,omitempty"`
 	DistanceKm float64   `json:"distance_km,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 }
@@ -52,6 +54,13 @@ type ActiveDriverRepository interface {
 	RemoveStaleDrivers(ctx context.Context, olderThan time.Time) (int64, error)
 	FindNearestDrivers(ctx context.Context, lat, lng, radius float64, limit int) ([]DriverLocation, error)
 	FindDriversInRadius(ctx context.Context, lat, lng, radius float64, limit int) ([]DriverLocation, error)
+}
+
+// LocationIngester buffers incoming GPS pings and flushes them in batches to
+// both Cassandra (history) and Redis GEO (active driver index). Implemented by
+// LocationBatcher. Interface lives here to avoid import cycles with application.
+type LocationIngester interface {
+	Push(loc DriverLocation)
 }
 
 type LocationHistoryRepository interface {

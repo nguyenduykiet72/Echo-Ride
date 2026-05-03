@@ -20,6 +20,7 @@ type RideHandler struct {
 	acceptRideUC application.AcceptRideUseCase
 	updateTripUC application.UpdateTripStatusUseCase
 	cancelRideUC application.CanceledRideUC
+	declineRideUC application.DeclineRideUC
 }
 
 func NewRideHandler(
@@ -30,14 +31,16 @@ func NewRideHandler(
 	acceptRideUC application.AcceptRideUseCase,
 	updateTripUC application.UpdateTripStatusUseCase,
 	cancelRideUC application.CanceledRideUC,
+	declineRideUC application.DeclineRideUC,
 ) {
 	handler := &RideHandler{
-		createRideUC: createRideUC,
-		updateRideUC: updateRideUC,
-		getRideUC:    getRideUC,
-		acceptRideUC: acceptRideUC,
-		updateTripUC: updateTripUC,
-		cancelRideUC: cancelRideUC,
+		createRideUC:  createRideUC,
+		updateRideUC:  updateRideUC,
+		getRideUC:     getRideUC,
+		acceptRideUC:  acceptRideUC,
+		updateTripUC:  updateTripUC,
+		cancelRideUC:  cancelRideUC,
+		declineRideUC: declineRideUC,
 	}
 
 	v1 := e.Group("/api/v1/rides")
@@ -51,6 +54,7 @@ func NewRideHandler(
 	v1.PATCH("/:id/status", handler.UpdateStatus)
 	v1.PATCH("/:id/trip-status", handler.UpdateTripStatus, middlewares.RequireRole("DRIVER"))
 	v1.PATCH("/:id/cancel", handler.CancelRide, middlewares.RequireRole("RIDER", "DRIVER"))
+	v1.PATCH("/:id/decline", handler.DeclineRide, middlewares.RequireRole("DRIVER"))
 }
 
 func (h *RideHandler) CreateRide(ctx *echo.Context) error {
@@ -261,4 +265,29 @@ func (h *RideHandler) CancelRide(ctx *echo.Context) error {
 		"status":       string(domain.RideStatusCancelled),
 		"cancelled_by": string(cancelledBy),
 	}, "Ride cancelled")
+}
+
+func (h *RideHandler) DeclineRide(ctx *echo.Context) error {
+	rideID, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		return errs.ErrBadRequest.WithMessage("Invalid ride ID").WithRootErr(err)
+	}
+
+	userIDStr, _ := ctx.Get("userId").(string)
+	if userIDStr == "" {
+		return errs.ErrUnauthorized.WithMessage("Missing user context")
+	}
+
+	driverID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return errs.ErrUnauthorized.WithMessage("Invalid user id").WithRootErr(err)
+	}
+
+	if err := h.declineRideUC.Execute(ctx.Request().Context(), rideID, driverID); err != nil {
+		return err
+	}
+
+	return response.WriteSuccess(ctx, http.StatusOK, map[string]string{
+		"ride_id": rideID.String(),
+	}, "Ride offer declined")
 }

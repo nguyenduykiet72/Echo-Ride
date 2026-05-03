@@ -17,18 +17,18 @@ const (
 	writeWait      = 10 * time.Second
 	pongWait       = 60 * time.Second
 	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 512
+	maxMessageSize = 4096
 	authTimeout    = 5 * time.Second
 )
 
 type Client struct {
-	Hub             *Hub
-	UserID          uuid.UUID
-	Conn            *websocket.Conn
-	Send            chan []byte
-	Batcher         *application.LocationBatcher
-	jwtSecret       string
-	isAuthenticated bool
+	Hub              *Hub
+	UserID           uuid.UUID
+	Conn             *websocket.Conn
+	Send             chan []byte
+	updateLocationUC application.UpdateDriverLocationUseCase
+	jwtSecret        string
+	isAuthenticated  bool
 }
 
 func (c *Client) readPump() {
@@ -91,9 +91,13 @@ func (c *Client) readPump() {
 
 			c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 
-			authSuccessMsg, _ := json.Marshal(map[string]string{
+			authSuccessMsg, err := json.Marshal(map[string]string{
 				"type": "AUTH_SUCCESS",
 			})
+			if err != nil {
+				log.Printf("Failed to marshal AUTH_SUCCESS for user %s: %v", c.UserID.String(), err)
+				break
+			}
 			c.Send <- authSuccessMsg
 
 			continue
@@ -102,27 +106,35 @@ func (c *Client) readPump() {
 		switch rawMsg.Type {
 		case "DRIVER_LOCATION_SYNC":
 			var payload struct {
-				RideID string  `json:"ride_id"`
-				Lat    float64 `json:"lat"`
-				Lng    float64 `json:"lng"`
+				RideID  string  `json:"ride_id"`
+				Lat     float64 `json:"lat"`
+				Lng     float64 `json:"lng"`
+				Bearing float32 `json:"bearing"`
+				Speed   float32 `json:"speed"`
 			}
 			if err := json.Unmarshal(rawMsg.Data, &payload); err != nil {
 				log.Printf("Invalid location payload from driver %s", c.UserID.String())
 				continue
 			}
 
-			if payload.RideID != "" {
-				locMsg := LocationUpdateMsg{
-					RideID:   payload.RideID,
-					DriverID: c.UserID.String(),
-					Lat:      payload.Lat,
-					Lng:      payload.Lng,
-				}
-				c.Hub.BroadcastLocationToRedis(context.Background(), locMsg)
+			rideID, parseErr := uuid.Parse(payload.RideID)
+			if parseErr != nil {
+				log.Printf("Invalid ride_id in DRIVER_LOCATION_SYNC from driver %s: %q — skipping",
+					c.UserID.String(), payload.RideID)
+				continue
 			}
 
-			if c.Batcher != nil {
-				// Add location to batcher for potential batch processing
+			cmd := application.UpdateLocationCommand{
+				DriverID: c.UserID,
+				RideID:   rideID,
+				Lat:      payload.Lat,
+				Lng:      payload.Lng,
+				Bearing:  payload.Bearing,
+				Speed:    payload.Speed,
+			}
+
+			if err := c.updateLocationUC.Execute(context.Background(), cmd); err != nil {
+				log.Printf("Failed to process location update from driver %s: %v", c.UserID.String(), err)
 			}
 
 		case "SUBSCRIBE_RIDE":
