@@ -63,3 +63,16 @@ WHERE
     AND ride_driver_id = sqlc.arg('driver_id')
     AND ride_status = sqlc.arg('expected_old_status')::ride_status
 RETURNING *;
+
+-- name: CancelRide :one
+-- CAS-style cancel: succeeds only if the ride is in a cancellable state
+-- (REQUESTED, ACCEPTED, or IN_PROGRESS). Concurrent cancels race and only
+-- one wins; subsequent attempts get pgx.ErrNoRows.
+UPDATE t_rides
+SET
+    ride_status = 'CANCELLED'::ride_status,
+    ride_updated_at = NOW()
+WHERE
+    ride_id = sqlc.arg('ride_id')
+    AND ride_status IN ('REQUESTED'::ride_status, 'ACCEPTED'::ride_status, 'IN_PROGRESS'::ride_status)
+RETURNING *;

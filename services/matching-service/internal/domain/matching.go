@@ -6,6 +6,12 @@ import (
 
 type RideDispatchStatus string
 type RideEventStatus string
+type CancelledBy string
+
+const (
+	CancelledByRider  CancelledBy = "RIDER"
+	CancelledByDriver CancelledBy = "DRIVER"
+)
 
 const (
 	RideStatusFinding  RideDispatchStatus = "FINDING"
@@ -59,5 +65,9 @@ type DispatchRepository interface {
 	SetTimeout(ctx context.Context, rideID string, expireAt int64) error
 	GetExpiredRides(ctx context.Context, now int64, limit int) ([]string, error)
 	RemoveTimeout(ctx context.Context, rideID string) error
-	CheckAndSetIdempotency(ctx context.Context, eventID string) (bool, error)
+	// WasProcessed checks (without writing) whether an event has already been
+	// successfully handled. Used together with MarkProcessed to ensure the
+	// idempotency token is only persisted *after* the handler succeeds.
+	WasProcessed(ctx context.Context, eventID string) (bool, error)
+	MarkProcessed(ctx context.Context, eventID string) error
 }

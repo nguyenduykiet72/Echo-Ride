@@ -12,6 +12,10 @@ import (
 
 type Querier interface {
 	AcceptRide(ctx context.Context, arg AcceptRideParams) (TRide, error)
+	// CAS-style cancel: succeeds only if the ride is in a cancellable state
+	// (REQUESTED, ACCEPTED, or IN_PROGRESS). Concurrent cancels race and only
+	// one wins; subsequent attempts get pgx.ErrNoRows.
+	CancelRide(ctx context.Context, rideID pgtype.UUID) (TRide, error)
 	CreateOutboxEvent(ctx context.Context, arg CreateOutboxEventParams) (TOutboxEvent, error)
 	CreateRide(ctx context.Context, arg CreateRideParams) (TRide, error)
 	GetPendingOutboxEvents(ctx context.Context, limit int32) ([]TOutboxEvent, error)

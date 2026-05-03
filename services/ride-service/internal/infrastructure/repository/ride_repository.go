@@ -277,3 +277,54 @@ func (r *RideRepositoryImpl) UpdateTripStatus(ctx context.Context, rideID, drive
 
 	return dbRideToDomain(dbRide), nil
 }
+
+func (r *RideRepositoryImpl) CancelRide(ctx context.Context, rideID uuid.UUID, eventType string, eventPayload []byte) (*domain.Ride, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := r.q.WithTx(tx)
+
+	dbRide, err := qtx.CancelRide(ctx, toPgtypeUUID(rideID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("ride not found or not cancellable: %w", err)
+		}
+		return nil, fmt.Errorf("failed to cancel ride: %w", err)
+	}
+
+	outboxParams := dbgen.CreateOutboxEventParams{
+		EventAggregateID:   toUUID(dbRide.RideID).String(),
+		EventAggregateType: string(domain.OutboxStateRide),
+		EventType:          eventType,
+		EventPayload:       eventPayload,
+	}
+
+	if _, err := qtx.CreateOutboxEvent(ctx, outboxParams); err != nil {
+		return nil, fmt.Errorf("failed to create outbox event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return dbRideToDomain(dbRide), nil
+}
+
+func (r *RideRepositoryImpl) CreateOutboxEventOnly(ctx context.Context, aggregateID, aggregateType, eventType string, eventPayload []byte) error {
+	outboxParams := dbgen.CreateOutboxEventParams{
+		EventAggregateID:   aggregateID,
+		EventAggregateType: aggregateType,
+		EventType:          eventType,
+		EventPayload:       eventPayload,
+	}
+
+	_, err := r.q.CreateOutboxEvent(ctx, outboxParams)
+	if err != nil {
+		return fmt.Errorf("failed to create outbox event: %w", err)
+	}
+
+	return nil
+}

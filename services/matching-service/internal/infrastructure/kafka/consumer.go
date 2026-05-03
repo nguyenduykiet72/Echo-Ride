@@ -37,12 +37,13 @@ type RideRequestedPayload struct {
 }
 
 type RideConsumer struct {
-	reader         *kafka.Reader
-	dlqWriter      *kafka.Writer
-	uc             application.ProcessMatchingUseCase
-	handleAcceptUC application.HandleRideAcceptedUseCase
-	repo           domain.DispatchRepository
-	logger         *zap.Logger
+	reader            *kafka.Reader
+	dlqWriter         *kafka.Writer
+	uc                application.ProcessMatchingUseCase
+	handleAcceptUC    application.HandleRideAcceptedUseCase
+	handleCancelledUC application.HandleCancelledUseCase
+	dispatchRepo      domain.DispatchRepository
+	logger            *zap.Logger
 }
 
 type RideRequestedWrapper struct {
@@ -54,11 +55,20 @@ type RideRequestedWrapper struct {
 	} `json:"data"`
 }
 
+type CancelledPayload struct {
+	Data struct {
+		RideID      string `json:"ride_id"`
+		DriverID    string `json:"driver_id"`
+		CancelledBy string `json:"cancelled_by"`
+	} `json:"data"`
+}
+
 func NewRideConsumer(
 	cfg config.KafkaConfig,
 	uc application.ProcessMatchingUseCase,
 	handleAcceptUC application.HandleRideAcceptedUseCase,
-	repo domain.DispatchRepository,
+	handleCancelledUC application.HandleCancelledUseCase,
+	dispatchRepo domain.DispatchRepository,
 	logger *zap.Logger,
 ) *RideConsumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
@@ -76,12 +86,13 @@ func NewRideConsumer(
 	}
 
 	return &RideConsumer{
-		reader:         reader,
-		dlqWriter:      dlqWriter,
-		uc:             uc,
-		handleAcceptUC: handleAcceptUC,
-		repo:           repo,
-		logger:         logger,
+		reader:            reader,
+		dlqWriter:         dlqWriter,
+		uc:                uc,
+		handleAcceptUC:    handleAcceptUC,
+		handleCancelledUC: handleCancelledUC,
+		dispatchRepo:      dispatchRepo,
+		logger:            logger,
 	}
 }
 
@@ -91,9 +102,9 @@ func (c *RideConsumer) Start(ctx context.Context) {
 	for {
 		m, err := c.reader.FetchMessage(ctx)
 		if err != nil {
-			if strings.Contains(err.Error(), "context canceled") {
+			if ctx.Err() != nil || strings.Contains(err.Error(), "context canceled") {
 				c.logger.Info("Kafka Consumer context canceled", zap.String("topic", c.reader.Config().Topic))
-				break
+				return
 			}
 			c.logger.Error("Kafka Consumer error", zap.Error(err))
 			continue
@@ -117,57 +128,91 @@ func (c *RideConsumer) processMessage(ctx context.Context, m kafka.Message) {
 		return
 	}
 
-	if event.EventType != domain.RideEventStatusRequested && event.EventType != domain.RideEventStatusAccepted {
+	switch event.EventType {
+	case domain.RideEventStatusRequested,
+		domain.RideEventStatusAccepted,
+		domain.RideEventStatusCancelled:
+		// fallthrough to processing below
+	default:
+		// Not actionable for this consumer — commit & skip silently.
 		c.reader.CommitMessages(ctx, m)
 		return
 	}
 
 	parentCtx := otel.GetTextMapPropagator().Extract(ctx, propagation.MapCarrier(event.TraceContext))
-
 	tracer := otel.Tracer("matching-service")
 	spanCtx, span := tracer.Start(parentCtx, string("Kafka Consume "+event.EventType), trace.WithSpanKind(trace.SpanKindConsumer))
 	defer span.End()
 
-	isNewEvent, err := c.repo.CheckAndSetIdempotency(spanCtx, event.EventID)
+	// Idempotency: read-only check first. The token is *only* persisted after
+	// the handler succeeds (via MarkProcessed). This prevents the classic
+	// "lost event" bug where a SETNX-before-process consumes the token even
+	// when the handler crashes mid-flight.
+	processed, err := c.dispatchRepo.WasProcessed(spanCtx, event.EventID)
 	if err != nil {
 		c.logger.Error("Failed to check idempotency", zap.Error(err), zap.String("event_id", event.EventID))
 		return
 	}
-
-	if !isNewEvent {
-		c.logger.Warn("Idempotency hit for event, skipping processing", zap.String("event_id", event.EventID))
+	if processed {
+		c.logger.Debug("Skipping already-processed event", zap.String("event_id", event.EventID))
 		c.reader.CommitMessages(ctx, m)
 		return
 	}
 
+	var handlerErr error
 	switch event.EventType {
 	case domain.RideEventStatusRequested:
-		c.handleRideRequested(spanCtx, m, event)
+		handlerErr = c.handleRideRequested(spanCtx, m, event)
 	case domain.RideEventStatusAccepted:
-		c.handleRideAccepted(spanCtx, m, event)
-	default:
-		c.logger.Warn("Ignored unhandled event type",
-			zap.String("event_type", string(event.EventType)),
-			zap.String("event_id", event.EventID))
-		c.reader.CommitMessages(ctx, m)
+		handlerErr = c.handleRideAccepted(spanCtx, m, event)
+	case domain.RideEventStatusCancelled:
+		handlerErr = c.handleRideCancelled(spanCtx, m, event)
 	}
+
+	if handlerErr != nil {
+		c.reader.CommitMessages(ctx, m)
+		return
+	}
+
+	if err := c.dispatchRepo.MarkProcessed(spanCtx, event.EventID); err != nil {
+		// Logged but non-fatal — at-least-once is the contract; duplicate
+		// delivery will be re-handled idempotently by the business logic
+		// (CAS on Redis state in the use-cases).
+		c.logger.Warn("Failed to mark event processed", zap.Error(err), zap.String("event_id", event.EventID))
+	}
+	c.reader.CommitMessages(ctx, m)
 }
 
-func (c *RideConsumer) handleRideRequested(ctx context.Context, m kafka.Message, event IncomingKafkaEvent) {
-	var payloadStr string
-	if err := json.Unmarshal(event.EventPayload, &payloadStr); err != nil {
-		c.logger.Error("Failed to unmarshal REQUESTED payload string", zap.Error(err))
-		c.sendToDLQ(ctx, m, "invalid_payload_string")
-		c.reader.CommitMessages(ctx, m)
-		return
+// retryHandler runs op with exponential backoff. Returns the last error if all
+// attempts fail or ctx is cancelled.
+func (c *RideConsumer) retryHandler(ctx context.Context, label string, op func() error) error {
+	const maxRetries = 3
+	backoff := 1 * time.Second
+	var err error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if err = op(); err == nil {
+			return nil
+		}
+		c.logger.Warn("handler attempt failed", zap.String("op", label), zap.Int("attempt", attempt), zap.Error(err))
+		if attempt == maxRetries {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+			backoff *= 2
+		}
 	}
+	return err
+}
 
-	var payload RideRequestedWrapper
-	if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
-		c.logger.Error("Failed to unmarshal REQUESTED payload", zap.Error(err))
+func (c *RideConsumer) handleRideRequested(ctx context.Context, m kafka.Message, event IncomingKafkaEvent) error {
+	payload, err := decodeRequestedPayload(event.EventPayload)
+	if err != nil {
+		c.logger.Error("Failed to decode REQUESTED payload", zap.Error(err))
 		c.sendToDLQ(ctx, m, "invalid_payload")
-		c.reader.CommitMessages(ctx, m)
-		return
+		return err
 	}
 
 	domainEvent := domain.RideRequestEvent{
@@ -177,78 +222,83 @@ func (c *RideConsumer) handleRideRequested(ctx context.Context, m kafka.Message,
 		PickupLng: payload.Data.PickupLng,
 	}
 
-	maxRetries := 3
-	backoff := 1 * time.Second
-
-	var err error
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		err = c.uc.Execute(ctx, domainEvent)
-		if err == nil {
-			break
-		}
-		c.logger.Warn("Failed to execute UseCase", zap.Error(err), zap.Int("attempt", attempt))
-		if attempt == maxRetries {
-			break
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(backoff):
-			backoff *= 2
-		}
-	}
-
-	if err != nil {
-		c.logger.Error("Failed to process ride request event after retries", zap.Error(err), zap.String("ride_id", payload.Data.ID))
+	if err := c.retryHandler(ctx, "ProcessMatching", func() error {
+		return c.uc.Execute(ctx, domainEvent)
+	}); err != nil {
+		c.logger.Error("Failed to process REQUESTED after retries", zap.Error(err), zap.String("ride_id", payload.Data.ID))
 		c.sendToDLQ(ctx, m, err.Error())
+		return err
 	}
 
-	if err := c.reader.CommitMessages(ctx, m); err != nil {
-		c.logger.Error("Failed to commit message after processing", zap.Error(err), zap.String("ride_id", payload.Data.ID))
-	} else {
-		c.logger.Info("Successfully processed and committed message", zap.String("ride_id", payload.Data.ID))
-	}
+	c.logger.Info("Processed REQUESTED event", zap.String("ride_id", payload.Data.ID))
+	return nil
 }
 
-func (c *RideConsumer) handleRideAccepted(ctx context.Context, m kafka.Message, event IncomingKafkaEvent) {
+func (c *RideConsumer) handleRideAccepted(ctx context.Context, m kafka.Message, event IncomingKafkaEvent) error {
 	rideID := event.EventAggregateID
 	c.logger.Info("Ride has been ACCEPTED. Stopping dispatcher...", zap.String("ride_id", rideID))
 
-	maxRetries := 3
-	backoff := 1 * time.Second
-	var err error
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		err = c.handleAcceptUC.Execute(ctx, rideID)
-		if err == nil {
-			break
-		}
-
-		c.logger.Warn("Failed to execute accept event", zap.Error(err), zap.Int("attempt", attempt))
-		if attempt == maxRetries {
-			break
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(backoff):
-			backoff *= 2
-		}
-	}
-
-	if err != nil {
-		c.logger.Error("Failed to execute HandleRideAcceptedUseCase after retries", zap.Error(err), zap.String("ride_id", rideID))
+	if err := c.retryHandler(ctx, "HandleAccepted", func() error {
+		return c.handleAcceptUC.Execute(ctx, rideID)
+	}); err != nil {
+		c.logger.Error("Failed to handle ACCEPTED after retries", zap.Error(err), zap.String("ride_id", rideID))
 		c.sendToDLQ(ctx, m, err.Error())
+		return err
+	}
+	return nil
+}
+
+func (c *RideConsumer) handleRideCancelled(ctx context.Context, m kafka.Message, event IncomingKafkaEvent) error {
+	payload, err := decodeCancelledPayload(event.EventPayload)
+	if err != nil {
+		c.logger.Error("Failed to decode CANCELLED payload", zap.Error(err))
+		c.sendToDLQ(ctx, m, "invalid_payload")
+		return err
 	}
 
-	if err := c.reader.CommitMessages(ctx, m); err != nil {
-		c.logger.Error("Failed to commit message after processing ACCEPTED event", zap.Error(err), zap.String("ride_id", rideID))
-	} else {
-		c.logger.Info("Successfully processed ACCEPTED event and committed message", zap.String("ride_id", rideID))
+	cancelledBy := payload.Data.CancelledBy
+	if cancelledBy == "" {
+		c.logger.Warn("CANCELLED event missing cancelled_by; defaulting to RIDER",
+			zap.String("ride_id", payload.Data.RideID))
+		cancelledBy = string(domain.CancelledByRider)
 	}
+
+	if err := c.handleCancelledUC.Execute(ctx, payload.Data.RideID, payload.Data.DriverID, domain.CancelledBy(cancelledBy)); err != nil {
+		c.logger.Error("Failed to handle CANCELLED", zap.Error(err), zap.String("ride_id", payload.Data.RideID))
+		c.sendToDLQ(ctx, m, err.Error())
+		return err
+	}
+	return nil
+}
+
+func decodeRequestedPayload(raw json.RawMessage) (RideRequestedWrapper, error) {
+	var p RideRequestedWrapper
+	if err := json.Unmarshal(raw, &p); err == nil && p.Data.ID != "" {
+		return p, nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return p, err
+	}
+	if err := json.Unmarshal([]byte(s), &p); err != nil {
+		return p, err
+	}
+	return p, nil
+}
+
+func decodeCancelledPayload(raw json.RawMessage) (CancelledPayload, error) {
+	var p CancelledPayload
+	if err := json.Unmarshal(raw, &p); err == nil && p.Data.RideID != "" {
+		return p, nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return p, err
+	}
+	if err := json.Unmarshal([]byte(s), &p); err != nil {
+		return p, err
+	}
+	return p, nil
 }
 
 func (c *RideConsumer) sendToDLQ(ctx context.Context, m kafka.Message, errorMsg string) {

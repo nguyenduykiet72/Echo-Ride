@@ -27,10 +27,11 @@ func NewHandleTimeoutUseCase(dispatchRepo domain.DispatchRepository, publisher d
 }
 
 func (h *handleTimeoutUC) Execute(ctx context.Context, rideID string, now int64) error {
+	_ = h.dispatchRepo.RemoveTimeout(ctx, rideID)
+
 	state, err := h.dispatchRepo.GetState(ctx, rideID)
 	if err != nil || state == nil {
 		h.logger.Error("failed to fetch state", zap.String("rideID", rideID), zap.Error(err))
-		h.dispatchRepo.RemoveTimeout(ctx, rideID)
 		return errs.ErrInternal.WithMessage("failed to fetch state").WithRootErr(err)
 	}
 

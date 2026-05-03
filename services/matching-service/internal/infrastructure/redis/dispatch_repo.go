@@ -94,19 +94,16 @@ func (r *redisDispatchRepo) RemoveTimeout(ctx context.Context, rideID string) er
 	return r.client.ZRem(ctx, TimeoutZSetKey, rideID).Err()
 }
 
-func (r *redisDispatchRepo) CheckAndSetIdempotency(ctx context.Context, eventID string) (bool, error) {
+func (r *redisDispatchRepo) WasProcessed(ctx context.Context, eventID string) (bool, error) {
 	key := MatchingIdempotencyKeyPrefix + eventID
-	err := r.client.SetArgs(ctx, key, "1", redis.SetArgs{
-		Mode: "NX",
-		TTL:  24 * time.Hour,
-	}).Err()
-
-	if errors.Is(err, redis.Nil) {
-		return false, nil // Key already exists
-	}
-
+	n, err := r.client.Exists(ctx, key).Result()
 	if err != nil {
 		return false, err
 	}
-	return true, nil
+	return n > 0, nil
+}
+
+func (r *redisDispatchRepo) MarkProcessed(ctx context.Context, eventID string) error {
+	key := MatchingIdempotencyKeyPrefix + eventID
+	return r.client.Set(ctx, key, "1", 24*time.Hour).Err()
 }

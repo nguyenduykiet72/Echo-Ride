@@ -80,7 +80,7 @@ func (f *findDriversUseCase) fallbackToRedisDistance(drivers []domain.DriverLoca
 			DriverID: d.DriverID,
 			Lat:      d.Lat,
 			Lng:      d.Lng,
-			ETA:      d.DistanceKm, // ETA is unknown in fallback, could be estimated based on distance if needed
+			ETA:      d.DistanceKm * 120, // ETA is unknown in fallback, could be estimated based on distance if needed
 			Distance: d.DistanceKm,
 		})
 	}

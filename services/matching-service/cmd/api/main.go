@@ -58,11 +58,12 @@ func main() {
 	handleTimeoutUC := application.NewHandleTimeoutUseCase(dispatchRepo, eventPublisher, log)
 	processRideUC := application.NewProcessMatchingUseCase(dispatchRepo, locationClient, eventPublisher, log)
 	handleAcceptUC := application.NewHandleRideAcceptedUseCase(dispatchRepo, log)
+	handleCancelledUC := application.NewHandleCancelledUseCase(dispatchRepo, handleTimeoutUC, log)
 
 	timeoutWatcher := application.NewTimeoutWatcher(dispatchRepo, handleTimeoutUC, log)
 	go timeoutWatcher.Start(workerCtx)
 
-	rideConsumer := kafka.NewRideConsumer(cfg.Kafka, processRideUC, handleAcceptUC, dispatchRepo, log)
+	rideConsumer := kafka.NewRideConsumer(cfg.Kafka, processRideUC, handleAcceptUC, handleCancelledUC, dispatchRepo, log)
 	go rideConsumer.Start(workerCtx)
 
 	// Start the HTTP server for health checks
