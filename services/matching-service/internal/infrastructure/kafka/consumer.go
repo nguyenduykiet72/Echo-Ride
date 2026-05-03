@@ -131,7 +131,8 @@ func (c *RideConsumer) processMessage(ctx context.Context, m kafka.Message) {
 	switch event.EventType {
 	case domain.RideEventStatusRequested,
 		domain.RideEventStatusAccepted,
-		domain.RideEventStatusCancelled:
+		domain.RideEventStatusCancelled,
+		domain.RideEventStatusDeclined:
 		// fallthrough to processing below
 	default:
 		// Not actionable for this consumer — commit & skip silently.
@@ -166,6 +167,12 @@ func (c *RideConsumer) processMessage(ctx context.Context, m kafka.Message) {
 	case domain.RideEventStatusAccepted:
 		handlerErr = c.handleRideAccepted(spanCtx, m, event)
 	case domain.RideEventStatusCancelled:
+		handlerErr = c.handleRideCancelled(spanCtx, m, event)
+	case domain.RideEventStatusDeclined:
+		// RIDE_DECLINED = driver refusing an offer during dispatch.
+		// Reuse handleRideCancelled: payload shape is identical and
+		// cancelled_by is always DRIVER, so the use-case fast-forwards
+		// to the next candidate exactly as a driver-cancel does.
 		handlerErr = c.handleRideCancelled(spanCtx, m, event)
 	}
 

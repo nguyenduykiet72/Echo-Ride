@@ -29,6 +29,7 @@ const (
 	EventTypeRideCompleted EventType = "RIDE_COMPLETED"
 	EventTypeRideCancelled EventType = "RIDE_CANCELLED"
 	EventTypeRideFailed    EventType = "RIDE_FAILED"
+	EventTypeRideDeclined  EventType = "RIDE_DECLINED"
 )
 
 type Ride struct {

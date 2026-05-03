@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"echo-ride/services/location-service/internal/domain"
 	"encoding/json"
 	"sync"
 
@@ -24,7 +25,8 @@ type LocationUpdateMsg struct {
 	DriverID string  `json:"driver_id"`
 	Lat      float64 `json:"lat"`
 	Lng      float64 `json:"lng"`
-	Heading  float64 `json:"heading,omitempty"`
+	Bearing  float32 `json:"bearing,omitempty"`
+	Speed    float32 `json:"speed,omitempty"`
 }
 
 func NewHub(redisClient *redis.Client, logger *zap.Logger) *Hub {
@@ -91,6 +93,21 @@ func (h *Hub) NotifyUser(ctx context.Context, userID uuid.UUID, messageType stri
 	h.SendMessageToUser(userID, msgBytes)
 
 	return nil
+}
+
+// BroadcastDriverLocation implements application.LocationBroadcaster.
+// Converts a domain.DriverLocation to the Redis Pub/Sub message format and
+// publishes it to the "ride_tracking:{rideID}" channel so all hub instances
+// subscribed for that ride can push to the rider's WebSocket.
+func (h *Hub) BroadcastDriverLocation(ctx context.Context, loc domain.DriverLocation) {
+	h.BroadcastLocationToRedis(ctx, LocationUpdateMsg{
+		RideID:   loc.RideID.String(),
+		DriverID: loc.DriverID.String(),
+		Lat:      loc.Lat,
+		Lng:      loc.Lng,
+		Bearing:  loc.Bearing,
+		Speed:    loc.Speed,
+	})
 }
 
 func (h *Hub) BroadcastLocationToRedis(ctx context.Context, msg LocationUpdateMsg) {

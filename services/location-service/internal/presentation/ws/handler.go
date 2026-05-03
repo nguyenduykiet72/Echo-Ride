@@ -20,18 +20,18 @@ var upgrader = websocket.Upgrader{
 }
 
 type Handler struct {
-	hub       *Hub
-	batcher   *application.LocationBatcher
-	logger    *zap.Logger
-	jwtSecret string
+	hub              *Hub
+	updateLocationUC application.UpdateDriverLocationUseCase
+	logger           *zap.Logger
+	jwtSecret        string
 }
 
-func NewHandler(hub *Hub, batcher *application.LocationBatcher, jwtSecret string, logger *zap.Logger) *Handler {
+func NewHandler(hub *Hub, updateLocationUC application.UpdateDriverLocationUseCase, jwtSecret string, logger *zap.Logger) *Handler {
 	return &Handler{
-		hub:       hub,
-		batcher:   batcher,
-		logger:    logger,
-		jwtSecret: jwtSecret,
+		hub:              hub,
+		updateLocationUC: updateLocationUC,
+		logger:           logger,
+		jwtSecret:        jwtSecret,
 	}
 }
 
@@ -43,15 +43,14 @@ func (h *Handler) ServeWS(ctx *echo.Context) error {
 	}
 
 	client := &Client{
-		Hub: h.hub,
-		//UserID,
-		Conn:            conn,
-		Send:            make(chan []byte, 256),
-		Batcher:         h.batcher,
-		jwtSecret:       h.jwtSecret,
-		isAuthenticated: false,
+		Hub:              h.hub,
+		Conn:             conn,
+		Send:             make(chan []byte, 256),
+		updateLocationUC: h.updateLocationUC,
+		jwtSecret:        h.jwtSecret,
+		isAuthenticated:  false,
 	}
-	
+
 	go client.writePump()
 	go client.readPump()
 
