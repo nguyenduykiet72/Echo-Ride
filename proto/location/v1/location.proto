@@ -27,3 +27,12 @@ message DriverEtaInfo {
 message FindNearestDriversResponse {
   repeated DriverEtaInfo drivers = 1;
 }
+
+message UpdateLocationRequest {
+  string driver_id = 1;
+  string ride_id = 2;
+  double lat = 3;
+  double lng = 4;
+  float bearing = 5;
+  float speed = 6;
+}

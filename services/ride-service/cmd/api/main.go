@@ -5,6 +5,7 @@ import (
 	"echo-ride/pkg/tracing"
 	"echo-ride/services/ride-service/config"
 	"echo-ride/services/ride-service/internal/infrastructure/db"
+	"echo-ride/services/ride-service/internal/infrastructure/kafka"
 	"echo-ride/services/ride-service/pkg/logger"
 	"errors"
 	"fmt"
@@ -49,11 +50,17 @@ func main() {
 	defer dbPool.Close()
 	log.Info("Database connection successful")
 
-	// Start the HTTP server
-	e := newServer(dbPool, log)
-	
-	srvAddr := fmt.Sprintf(":%s", cfg.Server.Port)
+	useCases := buildUseCases(dbPool, log)
 
+	consumerCtx, cancelConsumer := context.WithCancel(context.Background())
+	defer cancelConsumer()
+
+	rideConsumer := kafka.NewRideConsumer(cfg.Kafka, useCases.updateRide, log)
+	go rideConsumer.Start(consumerCtx)
+
+	e := newServer(useCases, log)
+
+	srvAddr := fmt.Sprintf(":%s", cfg.Server.Port)
 	s := http.Server{Addr: srvAddr, Handler: e}
 
 	go func() {
@@ -65,10 +72,13 @@ func main() {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit // Wait for shutdown signal
+	<-quit
 	log.Info("Shutting down server...")
 
-	//cancelWorker()
+	cancelConsumer()
+	if err := rideConsumer.Close(); err != nil {
+		log.Error("Failed to close kafka consumer", zap.Error(err))
+	}
 
 	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()

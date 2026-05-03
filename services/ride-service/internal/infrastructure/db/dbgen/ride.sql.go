@@ -45,6 +45,39 @@ func (q *Queries) AcceptRide(ctx context.Context, arg AcceptRideParams) (TRide, 
 	return i, err
 }
 
+const cancelRide = `-- name: CancelRide :one
+UPDATE t_rides
+SET
+    ride_status = 'CANCELLED'::ride_status,
+    ride_updated_at = NOW()
+WHERE
+    ride_id = $1
+    AND ride_status IN ('REQUESTED'::ride_status, 'ACCEPTED'::ride_status, 'IN_PROGRESS'::ride_status)
+RETURNING ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lng, ride_dropoff_lat, ride_dropoff_lng, ride_status, ride_price, ride_created_at, ride_updated_at
+`
+
+// CAS-style cancel: succeeds only if the ride is in a cancellable state
+// (REQUESTED, ACCEPTED, or IN_PROGRESS). Concurrent cancels race and only
+// one wins; subsequent attempts get pgx.ErrNoRows.
+func (q *Queries) CancelRide(ctx context.Context, rideID pgtype.UUID) (TRide, error) {
+	row := q.db.QueryRow(ctx, cancelRide, rideID)
+	var i TRide
+	err := row.Scan(
+		&i.RideID,
+		&i.RideRiderID,
+		&i.RideDriverID,
+		&i.RidePickupLat,
+		&i.RidePickupLng,
+		&i.RideDropoffLat,
+		&i.RideDropoffLng,
+		&i.RideStatus,
+		&i.RidePrice,
+		&i.RideCreatedAt,
+		&i.RideUpdatedAt,
+	)
+	return i, err
+}
+
 const createRide = `-- name: CreateRide :one
 INSERT INTO
     t_rides (

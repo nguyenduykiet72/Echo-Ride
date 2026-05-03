@@ -19,14 +19,25 @@ type RideHandler struct {
 	getRideUC    application.GetRideUseCase
 	acceptRideUC application.AcceptRideUseCase
 	updateTripUC application.UpdateTripStatusUseCase
+	cancelRideUC application.CanceledRideUC
 }
 
-func NewRideHandler(e *echo.Echo, createRideUC application.CreateRideUseCase, updateRideUC application.UpdateRideUseCase, getRideUC application.GetRideUseCase, acceptRideUC application.AcceptRideUseCase) {
+func NewRideHandler(
+	e *echo.Echo,
+	createRideUC application.CreateRideUseCase,
+	updateRideUC application.UpdateRideUseCase,
+	getRideUC application.GetRideUseCase,
+	acceptRideUC application.AcceptRideUseCase,
+	updateTripUC application.UpdateTripStatusUseCase,
+	cancelRideUC application.CanceledRideUC,
+) {
 	handler := &RideHandler{
 		createRideUC: createRideUC,
 		updateRideUC: updateRideUC,
 		getRideUC:    getRideUC,
 		acceptRideUC: acceptRideUC,
+		updateTripUC: updateTripUC,
+		cancelRideUC: cancelRideUC,
 	}
 
 	v1 := e.Group("/api/v1/rides")
@@ -39,6 +50,7 @@ func NewRideHandler(e *echo.Echo, createRideUC application.CreateRideUseCase, up
 	v1.PATCH("/:id/accept", handler.AcceptRide, middlewares.RequireRole("DRIVER"))
 	v1.PATCH("/:id/status", handler.UpdateStatus)
 	v1.PATCH("/:id/trip-status", handler.UpdateTripStatus, middlewares.RequireRole("DRIVER"))
+	v1.PATCH("/:id/cancel", handler.CancelRide, middlewares.RequireRole("RIDER", "DRIVER"))
 }
 
 func (h *RideHandler) CreateRide(ctx *echo.Context) error {
@@ -52,8 +64,17 @@ func (h *RideHandler) CreateRide(ctx *echo.Context) error {
 		return errs.ErrBadRequest.WithMessage("Validation failed").WithRootErr(err)
 	}
 
+	userIDStr, ok := ctx.Get("userId").(string)
+	if !ok || userIDStr == "" {
+		return errs.ErrUnauthorized.WithMessage("User context not found in context")
+	}
+	riderID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return errs.ErrBadRequest.WithMessage("Invalid X-User-Id").WithRootErr(err)
+	}
+
 	cmd := application.CreateRideCommand{
-		RiderID:    req.RiderID,
+		RiderID:    riderID,
 		PickupLat:  req.PickupLat,
 		PickupLng:  req.PickupLon,
 		DropoffLat: req.DropoffLat,
@@ -202,4 +223,42 @@ func (h *RideHandler) UpdateTripStatus(ctx *echo.Context) error {
 	}
 
 	return response.WriteSuccess(ctx, http.StatusOK, ride, "Trip status updated successfully")
+}
+
+func (h *RideHandler) CancelRide(ctx *echo.Context) error {
+	rideID, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		return errs.ErrBadRequest.WithMessage("Invalid ride ID").WithRootErr(err)
+	}
+
+	userIDStr, _ := ctx.Get("userId").(string)
+	roleStr, _ := ctx.Get("userRole").(string)
+	if userIDStr == "" || roleStr == "" {
+		return errs.ErrUnauthorized.WithMessage("Missing user context")
+	}
+
+	actorID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return errs.ErrUnauthorized.WithMessage("Invalid user id").WithRootErr(err)
+	}
+
+	var cancelledBy application.CancelledBy
+	switch roleStr {
+	case "RIDER":
+		cancelledBy = application.CancelledByRider
+	case "DRIVER":
+		cancelledBy = application.CancelledByDriver
+	default:
+		return errs.ErrForbidden.WithMessage("Role not allowed to cancel rides")
+	}
+
+	if err := h.cancelRideUC.Execute(ctx.Request().Context(), rideID, actorID, cancelledBy); err != nil {
+		return err
+	}
+
+	return response.WriteSuccess(ctx, http.StatusOK, map[string]string{
+		"ride_id":      rideID.String(),
+		"status":       string(domain.RideStatusCancelled),
+		"cancelled_by": string(cancelledBy),
+	}, "Ride cancelled")
 }
