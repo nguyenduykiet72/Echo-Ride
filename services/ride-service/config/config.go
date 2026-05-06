@@ -17,7 +17,7 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port string `yaml:"port" env:"RIDE_PORT" env-default:"8080" validate:"required"`
+	Port string `yaml:"port" env:"RIDE_PORT" env-default:"8111" validate:"required"`
 	Mode string `yaml:"mode" env:"RIDE_MODE" env-default:"development" validate:"required"`
 }
 
