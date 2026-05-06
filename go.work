@@ -4,6 +4,7 @@ use (
 	./pkg
 	./services/auth-service
 	./services/location-service
+	./services/matching-service
 	./services/payment-service
 	./services/ride-service
 )

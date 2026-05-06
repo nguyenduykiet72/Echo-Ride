@@ -13,27 +13,63 @@ import (
 
 const acceptRide = `-- name: AcceptRide :one
 UPDATE t_rides
-SET ride_status = 'ACCEPTED', ride_driver_id = $2, ride_updated_at = NOW()
-WHERE ride_id = $1 AND ride_status = 'REQUESTED'
-RETURNING ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lon, ride_dropoff_lat, ride_dropoff_lon, ride_status, ride_price, ride_created_at, ride_updated_at
+SET ride_status = 'ACCEPTED'::ride_status,
+    ride_driver_id = $1,
+    ride_updated_at = NOW()
+WHERE ride_id = $2
+  AND ride_status = 'REQUESTED'::ride_status
+RETURNING ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lng, ride_dropoff_lat, ride_dropoff_lng, ride_status, ride_price, ride_created_at, ride_updated_at
 `
 
 type AcceptRideParams struct {
-	RideID       pgtype.UUID `json:"ride_id"`
 	RideDriverID pgtype.UUID `json:"ride_driver_id"`
+	RideID       pgtype.UUID `json:"ride_id"`
 }
 
 func (q *Queries) AcceptRide(ctx context.Context, arg AcceptRideParams) (TRide, error) {
-	row := q.db.QueryRow(ctx, acceptRide, arg.RideID, arg.RideDriverID)
+	row := q.db.QueryRow(ctx, acceptRide, arg.RideDriverID, arg.RideID)
 	var i TRide
 	err := row.Scan(
 		&i.RideID,
 		&i.RideRiderID,
 		&i.RideDriverID,
 		&i.RidePickupLat,
-		&i.RidePickupLon,
+		&i.RidePickupLng,
 		&i.RideDropoffLat,
-		&i.RideDropoffLon,
+		&i.RideDropoffLng,
+		&i.RideStatus,
+		&i.RidePrice,
+		&i.RideCreatedAt,
+		&i.RideUpdatedAt,
+	)
+	return i, err
+}
+
+const cancelRide = `-- name: CancelRide :one
+UPDATE t_rides
+SET
+    ride_status = 'CANCELLED'::ride_status,
+    ride_updated_at = NOW()
+WHERE
+    ride_id = $1
+    AND ride_status IN ('REQUESTED'::ride_status, 'ACCEPTED'::ride_status, 'IN_PROGRESS'::ride_status)
+RETURNING ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lng, ride_dropoff_lat, ride_dropoff_lng, ride_status, ride_price, ride_created_at, ride_updated_at
+`
+
+// CAS-style cancel: succeeds only if the ride is in a cancellable state
+// (REQUESTED, ACCEPTED, or IN_PROGRESS). Concurrent cancels race and only
+// one wins; subsequent attempts get pgx.ErrNoRows.
+func (q *Queries) CancelRide(ctx context.Context, rideID pgtype.UUID) (TRide, error) {
+	row := q.db.QueryRow(ctx, cancelRide, rideID)
+	var i TRide
+	err := row.Scan(
+		&i.RideID,
+		&i.RideRiderID,
+		&i.RideDriverID,
+		&i.RidePickupLat,
+		&i.RidePickupLng,
+		&i.RideDropoffLat,
+		&i.RideDropoffLng,
 		&i.RideStatus,
 		&i.RidePrice,
 		&i.RideCreatedAt,
@@ -47,23 +83,23 @@ INSERT INTO
     t_rides (
     ride_rider_id,
     ride_pickup_lat,
-    ride_pickup_lon,
+    ride_pickup_lng,
     ride_dropoff_lat,
-    ride_dropoff_lon,
+    ride_dropoff_lng,
     ride_price
 )
 VALUES
     ($1, $2, $3, $4, $5, $6)
     RETURNING
-  ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lon, ride_dropoff_lat, ride_dropoff_lon, ride_status, ride_price, ride_created_at, ride_updated_at
+  ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lng, ride_dropoff_lat, ride_dropoff_lng, ride_status, ride_price, ride_created_at, ride_updated_at
 `
 
 type CreateRideParams struct {
 	RideRiderID    pgtype.UUID    `json:"ride_rider_id"`
 	RidePickupLat  pgtype.Numeric `json:"ride_pickup_lat"`
-	RidePickupLon  pgtype.Numeric `json:"ride_pickup_lon"`
+	RidePickupLng  pgtype.Numeric `json:"ride_pickup_lng"`
 	RideDropoffLat pgtype.Numeric `json:"ride_dropoff_lat"`
-	RideDropoffLon pgtype.Numeric `json:"ride_dropoff_lon"`
+	RideDropoffLng pgtype.Numeric `json:"ride_dropoff_lng"`
 	RidePrice      pgtype.Numeric `json:"ride_price"`
 }
 
@@ -71,9 +107,9 @@ func (q *Queries) CreateRide(ctx context.Context, arg CreateRideParams) (TRide, 
 	row := q.db.QueryRow(ctx, createRide,
 		arg.RideRiderID,
 		arg.RidePickupLat,
-		arg.RidePickupLon,
+		arg.RidePickupLng,
 		arg.RideDropoffLat,
-		arg.RideDropoffLon,
+		arg.RideDropoffLng,
 		arg.RidePrice,
 	)
 	var i TRide
@@ -82,9 +118,9 @@ func (q *Queries) CreateRide(ctx context.Context, arg CreateRideParams) (TRide, 
 		&i.RideRiderID,
 		&i.RideDriverID,
 		&i.RidePickupLat,
-		&i.RidePickupLon,
+		&i.RidePickupLng,
 		&i.RideDropoffLat,
-		&i.RideDropoffLon,
+		&i.RideDropoffLng,
 		&i.RideStatus,
 		&i.RidePrice,
 		&i.RideCreatedAt,
@@ -95,7 +131,7 @@ func (q *Queries) CreateRide(ctx context.Context, arg CreateRideParams) (TRide, 
 
 const getRideByID = `-- name: GetRideByID :one
 SELECT
-    ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lon, ride_dropoff_lat, ride_dropoff_lon, ride_status, ride_price, ride_created_at, ride_updated_at
+    ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lng, ride_dropoff_lat, ride_dropoff_lng, ride_status, ride_price, ride_created_at, ride_updated_at
 FROM
     t_rides
 WHERE
@@ -112,9 +148,9 @@ func (q *Queries) GetRideByID(ctx context.Context, rideID pgtype.UUID) (TRide, e
 		&i.RideRiderID,
 		&i.RideDriverID,
 		&i.RidePickupLat,
-		&i.RidePickupLon,
+		&i.RidePickupLng,
 		&i.RideDropoffLat,
-		&i.RideDropoffLon,
+		&i.RideDropoffLng,
 		&i.RideStatus,
 		&i.RidePrice,
 		&i.RideCreatedAt,
@@ -124,7 +160,7 @@ func (q *Queries) GetRideByID(ctx context.Context, rideID pgtype.UUID) (TRide, e
 }
 
 const listRides = `-- name: ListRides :many
-SELECT ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lon, ride_dropoff_lat, ride_dropoff_lon, ride_status, ride_price, ride_created_at, ride_updated_at FROM t_rides
+SELECT ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lng, ride_dropoff_lat, ride_dropoff_lng, ride_status, ride_price, ride_created_at, ride_updated_at FROM t_rides
 WHERE (ride_rider_id = $3 OR $3 IS NULL)
     AND (ride_driver_id = $4 OR $4 IS NULL)
     AND (ride_status = $5 OR $5 IS NULL)
@@ -161,9 +197,9 @@ func (q *Queries) ListRides(ctx context.Context, arg ListRidesParams) ([]TRide, 
 			&i.RideRiderID,
 			&i.RideDriverID,
 			&i.RidePickupLat,
-			&i.RidePickupLon,
+			&i.RidePickupLng,
 			&i.RideDropoffLat,
-			&i.RideDropoffLon,
+			&i.RideDropoffLng,
 			&i.RideStatus,
 			&i.RidePrice,
 			&i.RideCreatedAt,
@@ -180,10 +216,11 @@ func (q *Queries) ListRides(ctx context.Context, arg ListRidesParams) ([]TRide, 
 }
 
 const updateRideStatus = `-- name: UpdateRideStatus :one
+
 UPDATE t_rides
 SET ride_status = $2, ride_updated_at = NOW()
 WHERE ride_id = $1
-RETURNING ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lon, ride_dropoff_lat, ride_dropoff_lon, ride_status, ride_price, ride_created_at, ride_updated_at
+RETURNING ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lng, ride_dropoff_lat, ride_dropoff_lng, ride_status, ride_price, ride_created_at, ride_updated_at
 `
 
 type UpdateRideStatusParams struct {
@@ -191,6 +228,11 @@ type UpdateRideStatusParams struct {
 	RideStatus RideStatus  `json:"ride_status"`
 }
 
+// -- name: AcceptRide :one
+// UPDATE t_rides
+// SET ride_status = 'ACCEPTED', ride_driver_id = $2, ride_updated_at = NOW()
+// WHERE ride_id = $1 AND ride_status = 'REQUESTED'
+// RETURNING *;
 func (q *Queries) UpdateRideStatus(ctx context.Context, arg UpdateRideStatusParams) (TRide, error) {
 	row := q.db.QueryRow(ctx, updateRideStatus, arg.RideID, arg.RideStatus)
 	var i TRide
@@ -199,9 +241,52 @@ func (q *Queries) UpdateRideStatus(ctx context.Context, arg UpdateRideStatusPara
 		&i.RideRiderID,
 		&i.RideDriverID,
 		&i.RidePickupLat,
-		&i.RidePickupLon,
+		&i.RidePickupLng,
 		&i.RideDropoffLat,
-		&i.RideDropoffLon,
+		&i.RideDropoffLng,
+		&i.RideStatus,
+		&i.RidePrice,
+		&i.RideCreatedAt,
+		&i.RideUpdatedAt,
+	)
+	return i, err
+}
+
+const updateTripStatus = `-- name: UpdateTripStatus :one
+UPDATE t_rides
+SET
+    ride_status = $1::ride_status,
+    ride_updated_at = NOW()
+WHERE
+    ride_id = $2
+    AND ride_driver_id = $3
+    AND ride_status = $4::ride_status
+RETURNING ride_id, ride_rider_id, ride_driver_id, ride_pickup_lat, ride_pickup_lng, ride_dropoff_lat, ride_dropoff_lng, ride_status, ride_price, ride_created_at, ride_updated_at
+`
+
+type UpdateTripStatusParams struct {
+	NewStatus         RideStatus  `json:"new_status"`
+	RideID            pgtype.UUID `json:"ride_id"`
+	DriverID          pgtype.UUID `json:"driver_id"`
+	ExpectedOldStatus RideStatus  `json:"expected_old_status"`
+}
+
+func (q *Queries) UpdateTripStatus(ctx context.Context, arg UpdateTripStatusParams) (TRide, error) {
+	row := q.db.QueryRow(ctx, updateTripStatus,
+		arg.NewStatus,
+		arg.RideID,
+		arg.DriverID,
+		arg.ExpectedOldStatus,
+	)
+	var i TRide
+	err := row.Scan(
+		&i.RideID,
+		&i.RideRiderID,
+		&i.RideDriverID,
+		&i.RidePickupLat,
+		&i.RidePickupLng,
+		&i.RideDropoffLat,
+		&i.RideDropoffLng,
 		&i.RideStatus,
 		&i.RidePrice,
 		&i.RideCreatedAt,

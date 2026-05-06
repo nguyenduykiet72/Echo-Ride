@@ -5,3 +5,6 @@
 
 \!*.env.sample
 !**/*.env.sample
+
+
+/infra/development/docker/osrm_data

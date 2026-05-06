@@ -12,6 +12,10 @@ import (
 
 type Querier interface {
 	AcceptRide(ctx context.Context, arg AcceptRideParams) (TRide, error)
+	// CAS-style cancel: succeeds only if the ride is in a cancellable state
+	// (REQUESTED, ACCEPTED, or IN_PROGRESS). Concurrent cancels race and only
+	// one wins; subsequent attempts get pgx.ErrNoRows.
+	CancelRide(ctx context.Context, rideID pgtype.UUID) (TRide, error)
 	CreateOutboxEvent(ctx context.Context, arg CreateOutboxEventParams) (TOutboxEvent, error)
 	CreateRide(ctx context.Context, arg CreateRideParams) (TRide, error)
 	GetPendingOutboxEvents(ctx context.Context, limit int32) ([]TOutboxEvent, error)
@@ -20,7 +24,13 @@ type Querier interface {
 	ListRides(ctx context.Context, arg ListRidesParams) ([]TRide, error)
 	MarkOutboxEventAsFailed(ctx context.Context, eventID pgtype.UUID) error
 	MarkOutboxEventAsPublished(ctx context.Context, eventID pgtype.UUID) error
+	// -- name: AcceptRide :one
+	// UPDATE t_rides
+	// SET ride_status = 'ACCEPTED', ride_driver_id = $2, ride_updated_at = NOW()
+	// WHERE ride_id = $1 AND ride_status = 'REQUESTED'
+	// RETURNING *;
 	UpdateRideStatus(ctx context.Context, arg UpdateRideStatusParams) (TRide, error)
+	UpdateTripStatus(ctx context.Context, arg UpdateTripStatusParams) (TRide, error)
 }
 
 var _ Querier = (*Queries)(nil)

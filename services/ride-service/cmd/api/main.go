@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
+	"echo-ride/pkg/tracing"
 	"echo-ride/services/ride-service/config"
 	"echo-ride/services/ride-service/internal/infrastructure/db"
-	"echo-ride/services/ride-service/internal/infrastructure/outbox"
+	"echo-ride/services/ride-service/internal/infrastructure/kafka"
 	"echo-ride/services/ride-service/pkg/logger"
 	"errors"
 	"fmt"
@@ -28,6 +29,17 @@ func main() {
 	defer log.Sync()
 	log.Info("Starting Ride Service", zap.String("mode", cfg.Server.Mode))
 
+	tp, err := tracing.InitTracer("ride-service", cfg.Jaeger.AgentHost+":"+fmt.Sprint(cfg.Jaeger.AgentPort))
+	if err != nil {
+		log.Fatal("Failed to init tracer", zap.Error(err))
+	}
+
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			log.Fatal("Failed to shutdown tracer", zap.Error(err))
+		}
+	}()
+
 	ctx, cancelDB := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelDB()
 
@@ -38,15 +50,17 @@ func main() {
 	defer dbPool.Close()
 	log.Info("Database connection successful")
 
-	// Start the HTTP server
-	e := newServer(dbPool, log)
+	useCases := buildUseCases(dbPool, log)
 
-	workerCtx, cancelWorker := context.WithCancel(context.Background())
-	relayWorker := outbox.NewRelayWorker(dbPool, cfg.Kafka.Brokers, cfg.Kafka.Topic, log)
-	go relayWorker.Start(workerCtx)
+	consumerCtx, cancelConsumer := context.WithCancel(context.Background())
+	defer cancelConsumer()
+
+	rideConsumer := kafka.NewRideConsumer(cfg.Kafka, useCases.updateRide, log)
+	go rideConsumer.Start(consumerCtx)
+
+	e := newServer(useCases, log)
 
 	srvAddr := fmt.Sprintf(":%s", cfg.Server.Port)
-
 	s := http.Server{Addr: srvAddr, Handler: e}
 
 	go func() {
@@ -58,10 +72,13 @@ func main() {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit // Wait for shutdown signal
+	<-quit
 	log.Info("Shutting down server...")
 
-	cancelWorker()
+	cancelConsumer()
+	if err := rideConsumer.Close(); err != nil {
+		log.Error("Failed to close kafka consumer", zap.Error(err))
+	}
 
 	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()

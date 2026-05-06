@@ -1,19 +1,22 @@
 package http
 
-import "github.com/google/uuid"
+import (
+	"echo-ride/services/ride-service/internal/domain"
+
+	"github.com/google/uuid"
+)
 
 type createRideRequest struct {
-	RiderID    uuid.UUID `json:"rider_id" validate:"required,uuid"`
-	PickupLat  float64   `json:"pickup_lat" validate:"required"`
-	PickupLon  float64   `json:"pickup_lon" validate:"required"`
-	DropoffLat float64   `json:"dropoff_lat" validate:"required"`
-	DropoffLon float64   `json:"dropoff_lon" validate:"required"`
+	PickupLat  float64 `json:"pickup_lat" validate:"required"`
+	PickupLon  float64 `json:"pickup_lon" validate:"required"`
+	DropoffLat float64 `json:"dropoff_lat" validate:"required"`
+	DropoffLon float64 `json:"dropoff_lon" validate:"required"`
 }
 
 type createRideResponse struct {
-	RideID uuid.UUID `json:"ride_id"`
-	Status string    `json:"status"`
-	Price  float64   `json:"price"`
+	RideID uuid.UUID         `json:"ride_id"`
+	Status domain.RideStatus `json:"status"`
+	Price  float64           `json:"price"`
 }
 
 type acceptRideRequest struct {
@@ -21,5 +24,10 @@ type acceptRideRequest struct {
 }
 
 type updateStatusRequest struct {
-	Status string `json:"status" validate:"required,oneof=IN_PROGRESS COMPLETED CANCELED"`
+	Status domain.RideStatus `json:"status" validate:"required,oneof=IN_PROGRESS COMPLETED CANCELED"`
+}
+
+type updateTripRequest struct {
+	DriverID string `json:"driver_id" validate:"required,uuid"`
+	Status   string `json:"status" validate:"required,oneof=IN_PROGRESS COMPLETED"`
 }
