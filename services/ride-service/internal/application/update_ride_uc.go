@@ -5,9 +5,11 @@ import (
 	"echo-ride/pkg/errs"
 	"echo-ride/services/ride-service/internal/domain"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -87,11 +89,15 @@ func (u *udpateRideUseCase) Execute(ctx context.Context, rideID uuid.UUID, newSt
 
 	ride, err := u.repo.GetByID(ctx, rideID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			u.logger.Warn("Ride not found, skipping status update", zap.String("ride_id", rideID.String()))
+			return nil
+		}
 		span.RecordError(err)
-		return errs.ErrNotFound.WithMessage("Ride not found").WithRootErr(err)
+		return errs.ErrInternal.WithMessage("Failed to load ride").WithRootErr(err)
 	}
 	if ride == nil {
-		u.logger.Warn("Ride not found", zap.String("Ride ID", rideID.String()))
+		u.logger.Warn("Ride not found, skipping status update", zap.String("ride_id", rideID.String()))
 		return nil
 	}
 

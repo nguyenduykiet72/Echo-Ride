@@ -21,7 +21,7 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port string `yaml:"port" env:"LOCATION_PORT" env-default:"8080" validate:"required"`
+	Port string `yaml:"port" env:"LOCATION_PORT" env-default:"8112" validate:"required"`
 	Mode string `yaml:"mode" env:"LOCATION_MODE" env-default:"development" validate:"required"`
 }
 

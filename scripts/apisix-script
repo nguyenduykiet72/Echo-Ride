@@ -1,62 +1,85 @@
-// this creates a route for the Auth Service in APISIX, allowing the API Gateway to forward authentication requests to the Auth Service
-curl http://localhost:9180/apisix/admin/routes/auth-route -H 'X-API-KEY: your-api-key' -X PUT -d '
-{
+#!/usr/bin/env bash
+# Setup APISIX routes + JWT consumer for Echo-Ride.
+#
+# Usage:
+#   export APISIX_JWT_SECRET="<must match auth-service jwt.secret>"
+#   bash scripts/apisix-script
+#
+# Prerequisites:
+#   - APISIX running on :9180 (admin) and :9080 (gateway)
+#   - auth-service on :8114, ride-service on :8111, location-service on :8112
+#   - APISIX admin key matches infra/development/docker/apisix_conf/config.yaml
+
+set -euo pipefail
+
+APISIX_ADMIN="${APISIX_ADMIN:-http://localhost:9180/apisix/admin}"
+ADMIN_KEY="${APISIX_ADMIN_KEY:-edd1c9f034335f136f87ad84b625c8f1}"
+JWT_KEY="${APISIX_JWT_KEY:-echo-auth-service}"
+JWT_SECRET="${APISIX_JWT_SECRET:?APISIX_JWT_SECRET env var is required (must match auth-service jwt.secret)}"
+
+# 1) Public auth route — no JWT, forwards /api/v1/auth/* to auth-service
+curl -sS -o /dev/null -w "auth-route: %{http_code}\n" \
+  "${APISIX_ADMIN}/routes/auth-route" \
+  -H "X-API-KEY: ${ADMIN_KEY}" -X PUT -d '{
     "name": "Auth Service Route",
     "uri": "/api/v1/auth/*",
     "upstream": {
-        "type": "roundrobin",
-        "nodes": {
-            "host.docker.internal:your-auth-port": 1
-        }
+      "type": "roundrobin",
+      "nodes": { "host.docker.internal:8114": 1 }
     }
-}'
+  }'
 
-// this creates a consumer with JWT credentials for the API Gateway to authenticate requests to the Ride Service
-curl http://localhost:9180/apisix/admin/consumers -H 'X-API-KEY: your-api-key' -X PUT -d '
-{
-    "username": "echoride-gateway",
-    "plugins": {
-        "jwt-auth": {
-            "key": "echo-auth-service",
-            "secret": "your-jwt-secret"
-        }
+# 2) JWT consumer — APISIX validates token signature using this secret.
+#    The token must contain claim "key" matching JWT_KEY (auth-service issues "key": "echo-auth-service").
+curl -sS -o /dev/null -w "consumer: %{http_code}\n" \
+  "${APISIX_ADMIN}/consumers" \
+  -H "X-API-KEY: ${ADMIN_KEY}" -X PUT -d "{
+    \"username\": \"echoride_gateway\",
+    \"plugins\": {
+      \"jwt-auth\": {
+        \"key\": \"${JWT_KEY}\",
+        \"secret\": \"${JWT_SECRET}\"
+      }
     }
-}'
+  }"
 
-// this creates a route for the Ride Service in APISIX, allowing the API Gateway to forward ride-related requests to the Ride Service, while also enforcing JWT authentication and adding user information to the request headers
-curl http://localhost:9180/apisix/admin/routes/ride-route -H 'X-API-KEY: your-api-key' -X PUT -d '
-{
-    "name": "Ride Service Route",
-    "uri": "/api/v1/rides*",
-    "plugins": {
-        "jwt-auth": {},
-        "proxy-rewrite": {
-            "headers": {
-                "set": {
-                    "X-User-Id": "$jwt_claim_sub",
-                    "X-User-Role": "$jwt_claim_role"
-                }
-            }
-        }
+# 3) Ride route — requires JWT, injects X-User-Id and X-User-Role from claims.
+#    APISIX 3 does NOT expand $jwt_claim_* in proxy-rewrite (issue #12658), so we
+#    decode the JWT manually in serverless-pre-function. Signature is already
+#    verified by jwt-auth plugin running before this in the access phase.
+RIDE_LUA='return function(conf, ctx) local core = require("apisix.core"); local jwt = require("resty.jwt"); local auth = core.request.header(ctx, "Authorization"); if not auth then return end; local token = auth:match("[Bb]earer%s+(.+)") or auth; local obj = jwt:load_jwt(token); if not obj or not obj.valid or not obj.payload then return end; if obj.payload.sub then core.request.set_header(ctx, "X-User-Id", obj.payload.sub) end; if obj.payload.role then core.request.set_header(ctx, "X-User-Role", obj.payload.role) end; end'
+
+curl -sS -o /dev/null -w "ride-route: %{http_code}\n" \
+  "${APISIX_ADMIN}/routes/ride-route" \
+  -H "X-API-KEY: ${ADMIN_KEY}" -X PUT \
+  --data-binary @<(jq -n --arg fn "$RIDE_LUA" '{
+    name: "Ride Service Route",
+    uri: "/api/v1/rides*",
+    plugins: {
+      "jwt-auth": {},
+      "serverless-pre-function": {
+        phase: "rewrite",
+        functions: [$fn]
+      }
     },
-    "upstream": {
-        "type": "roundrobin",
-        "nodes": {
-            "host.docker.internal:8081": 1
-        }
+    upstream: {
+      type: "roundrobin",
+      nodes: { "host.docker.internal:8111": 1 }
     }
-}'
+  }')
 
-// this creates a route for the Location Service in APISIX, allowing the API Gateway to forward WebSocket requests to the Location Service, while also enabling WebSocket support
-curl http://localhost:9180/apisix/admin/routes/location-ws-route -H 'X-API-KEY: your-api-key' -X PUT -d '
-{
+# 4) Location WebSocket route — JWT is verified in-app via AUTH message (see ws/client.go),
+#    so APISIX only does the WS upgrade proxy here.
+curl -sS -o /dev/null -w "location-ws-route: %{http_code}\n" \
+  "${APISIX_ADMIN}/routes/location-ws-route" \
+  -H "X-API-KEY: ${ADMIN_KEY}" -X PUT -d '{
     "name": "Location Service WebSocket",
     "uri": "/ws*",
     "enable_websocket": true,
     "upstream": {
-        "type": "roundrobin",
-        "nodes": {
-            "host.docker.internal:8083": 1
-        }
+      "type": "roundrobin",
+      "nodes": { "host.docker.internal:8112": 1 }
     }
-}'
+  }'
+
+echo "Done. Verify with: curl -H 'X-API-KEY: ${ADMIN_KEY}' ${APISIX_ADMIN}/routes"
