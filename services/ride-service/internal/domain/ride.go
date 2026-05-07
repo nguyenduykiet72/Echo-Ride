@@ -24,12 +24,14 @@ const (
 )
 
 const (
-	EventTypeRideRequested EventType = "RIDE_REQUESTED"
-	EventTypeRideAccepted  EventType = "RIDE_ACCEPTED"
-	EventTypeRideCompleted EventType = "RIDE_COMPLETED"
-	EventTypeRideCancelled EventType = "RIDE_CANCELLED"
-	EventTypeRideFailed    EventType = "RIDE_FAILED"
-	EventTypeRideDeclined  EventType = "RIDE_DECLINED"
+	EventTypeRideRequested  EventType = "RIDE_REQUESTED"
+	EventTypeRideAccepted   EventType = "RIDE_ACCEPTED"
+	EventTypeDriverArrived  EventType = "DRIVER_ARRIVED"
+	EventTypeRideInProgress EventType = "IN_PROGRESS"
+	EventTypeRideCompleted  EventType = "COMPLETED"
+	EventTypeRideCancelled  EventType = "RIDE_CANCELLED"
+	EventTypeRideFailed     EventType = "RIDE_FAILED"
+	EventTypeRideDeclined   EventType = "RIDE_DECLINED"
 )
 
 type Ride struct {
@@ -50,14 +52,6 @@ type RideFilter struct {
 	Status   *string // optional filter by status (e.g., "requested", "accepted", "completed") why pointer because we want to distinguish between "no filter" (nil) and "filter by empty string" ("")
 	Limit    int32
 	Offset   int32
-}
-
-type RideEventPayload struct {
-	EventID      string            `json:"event_id"`
-	EventType    EventType         `json:"event_type"`
-	Timestamp    string            `json:"timestamp"`
-	Data         interface{}       `json:"data"`
-	TraceContext map[string]string `json:"trace_context,omitempty"`
 }
 
 type RideRepository interface {

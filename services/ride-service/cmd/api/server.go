@@ -32,7 +32,9 @@ type appUseCases struct {
 	updateRide   application.UpdateRideUseCase
 	getRide      application.GetRideUseCase
 	acceptRide   application.AcceptRideUseCase
-	updateTrip   application.UpdateTripStatusUseCase
+	arriveRide   application.ArriveRideUseCase
+	startTrip    application.StartTripUseCase
+	completeTrip application.CompleteTripUseCase
 	cancelRide   application.CanceledRideUC
 	declineRide  application.DeclineRideUC
 }
@@ -40,14 +42,16 @@ type appUseCases struct {
 func buildUseCases(dbPool *pgxpool.Pool, log *zap.Logger) *appUseCases {
 	repo := repository.NewRideRepository(dbPool)
 	return &appUseCases{
-		repo:        repo,
-		createRide:  application.NewCreateRideUseCase(repo),
-		updateRide:  application.NewUdpateRideUseCase(repo, log),
-		getRide:     application.NewGetRideUseCase(repo),
-		acceptRide:  application.NewAcceptRideUseCase(repo, log),
-		updateTrip:  application.NewUpdateTripStatusUseCase(repo, log),
-		cancelRide:  application.NewCancelRideUseCase(repo, log),
-		declineRide: application.NewDeclineRideUseCase(repo, log),
+		repo:         repo,
+		createRide:   application.NewCreateRideUseCase(repo),
+		updateRide:   application.NewUdpateRideUseCase(repo, log),
+		getRide:      application.NewGetRideUseCase(repo),
+		acceptRide:   application.NewAcceptRideUseCase(repo, log),
+		arriveRide:   application.NewArriveRideUseCase(repo, log),
+		startTrip:    application.NewStartTripUseCase(repo, log),
+		completeTrip: application.NewCompleteTripUseCase(repo, log),
+		cancelRide:   application.NewCancelRideUseCase(repo, log),
+		declineRide:  application.NewDeclineRideUseCase(repo, log),
 	}
 }
 
@@ -62,7 +66,7 @@ func newServer(uc *appUseCases, log *zap.Logger) *echo.Echo {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok", "service": "ride-service"})
 	})
 
-	rideHttp.NewRideHandler(e, uc.createRide, uc.updateRide, uc.getRide, uc.acceptRide, uc.updateTrip, uc.cancelRide, uc.declineRide)
+	rideHttp.NewRideHandler(e, uc.createRide, uc.updateRide, uc.getRide, uc.acceptRide, uc.arriveRide, uc.startTrip, uc.completeTrip, uc.cancelRide, uc.declineRide)
 
 	return e
 }

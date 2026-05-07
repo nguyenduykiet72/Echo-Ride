@@ -17,6 +17,7 @@ const (
 const (
 	DriverStatusMatched      UserStatus = "DRIVER_MATCHED"
 	RideAcceptStatusAccepted UserStatus = "RIDE_ACCEPTED"
+	DriverArrivedStatus      UserStatus = "DRIVER_ARRIVED"
 	InProgressStatus         UserStatus = "IN_PROGRESS"
 	CompletedStatus          UserStatus = "COMPLETED"
 	CancelledStatus          UserStatus = "CANCELLED"

@@ -27,7 +27,7 @@ type updateStatusRequest struct {
 	Status domain.RideStatus `json:"status" validate:"required,oneof=IN_PROGRESS COMPLETED CANCELED"`
 }
 
-type updateTripRequest struct {
-	DriverID string `json:"driver_id" validate:"required,uuid"`
-	Status   string `json:"status" validate:"required,oneof=IN_PROGRESS COMPLETED"`
+type arriveRideRequest struct {
+	Lat float64 `json:"lat" validate:"required"`
+	Lng float64 `json:"lng" validate:"required"`
 }

@@ -82,4 +82,21 @@ curl -sS -o /dev/null -w "location-ws-route: %{http_code}\n" \
     }
   }'
 
+
+# 5) Limit count plugin — limit the number of requests per user.
+curl -i "${APISIX_ADMIN}/routes/ride-route" \
+-H "X-API-KEY: ${ADMIN_KEY}" -X PATCH -d '{
+    "plugins": {
+        "limit-count": {
+            "count": 5,                     
+            "time_window": 60,              
+            "rejected_code": 429,          
+            "key_type": "var",              
+            "key": "http_x_user_id",       
+            "policy": "local",
+            "algorithm": "sliding_window"  
+        }
+    }
+}'  
+
 echo "Done. Verify with: curl -H 'X-API-KEY: ${ADMIN_KEY}' ${APISIX_ADMIN}/routes"
