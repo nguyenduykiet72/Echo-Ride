@@ -5,11 +5,8 @@ import (
 	"echo-ride/pkg/errs"
 	"echo-ride/services/ride-service/internal/domain"
 	"encoding/json"
-	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
 )
 
 type CreateRideUseCase interface {
@@ -56,18 +53,7 @@ func (c *createRideUseCase) Execute(ctx context.Context, req CreateRideCommand) 
 		Status:     domain.RideStatusRequested,
 	}
 
-	traceContext := make(map[string]string)
-	otel.GetTextMapPropagator().Inject(ctx, propagation.MapCarrier(traceContext))
-
-	payload := domain.RideEventPayload{
-		EventID:      uuid.New().String(),
-		EventType:    domain.EventTypeRideRequested,
-		Timestamp:    time.Now().Format(time.RFC3339),
-		Data:         newRide,
-		TraceContext: traceContext,
-	}
-
-	payloadBytes, err := json.Marshal(payload)
+	payloadBytes, err := json.Marshal(newRide)
 	if err != nil {
 		return nil, errs.ErrInternal.WithMessage("Failed to marshal event payload").WithRootErr(err)
 	}

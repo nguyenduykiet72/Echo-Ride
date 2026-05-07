@@ -99,7 +99,7 @@ func (c *RideConsumer) Start(ctx context.Context) {
 			c.handleDriverMatched(ctx, m, event)
 		case domain.RideAcceptStatusAccepted:
 			c.handleRideAccepted(ctx, m, event)
-		case domain.InProgressStatus, domain.CompletedStatus, domain.CancelledStatus:
+		case domain.DriverArrivedStatus, domain.InProgressStatus, domain.CompletedStatus, domain.CancelledStatus:
 			c.handleTripStatusChange(ctx, m, event)
 		default:
 			c.logger.Debug("Received unsupported event type, skipping", zap.String("event_type", string(event.EventType)))
@@ -183,6 +183,8 @@ func (c *RideConsumer) handleTripStatusChange(ctx context.Context, m kafka.Messa
 
 	messageText := ""
 	switch payload.Status {
+	case domain.DriverArrivedStatus:
+		messageText = "Your driver has arrived at the pickup point"
 	case domain.InProgressStatus:
 		messageText = "Your ride is now in progress"
 	case domain.CompletedStatus:

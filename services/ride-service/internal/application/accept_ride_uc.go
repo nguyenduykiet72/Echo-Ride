@@ -5,7 +5,6 @@ import (
 	"echo-ride/pkg/errs"
 	"echo-ride/services/ride-service/internal/domain"
 	"encoding/json"
-	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -42,18 +41,11 @@ func (a *acceptRideUC) Execute(ctx context.Context, rideID, driverID uuid.UUID) 
 		return nil, errs.ErrNotFound.WithMessage("Ride not found").WithRootErr(err)
 	}
 
-	eventData := map[string]interface{}{
+	payload := map[string]interface{}{
 		"ride_id":   rideID.String(),
 		"rider_id":  ride.RiderID.String(),
 		"driver_id": driverID.String(),
 		"status":    string(domain.RideStatusAccepted),
-	}
-
-	payload := domain.RideEventPayload{
-		EventID:   uuid.New().String(),
-		EventType: domain.EventTypeRideAccepted,
-		Timestamp: time.Now().Format(time.RFC3339),
-		Data:      eventData,
 	}
 
 	payloadBytes, err := json.Marshal(payload)

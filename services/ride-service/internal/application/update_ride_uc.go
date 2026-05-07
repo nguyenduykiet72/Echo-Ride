@@ -6,7 +6,6 @@ import (
 	"echo-ride/services/ride-service/internal/domain"
 	"encoding/json"
 	"errors"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -46,14 +45,7 @@ func (u *udpateRideUseCase) UpdateStatus(ctx context.Context, rideID uuid.UUID, 
 
 	currentRide.Status = newStatus
 
-	payload := domain.RideEventPayload{
-		EventID:   uuid.New().String(),
-		EventType: "RIDE_STATUS_UPDATED",
-		Timestamp: time.Now().Format(time.RFC3339),
-		Data:      currentRide, // include the entire ride data in the event payload
-	}
-
-	payloadBytes, err := json.Marshal(payload)
+	payloadBytes, err := json.Marshal(currentRide)
 	if err != nil {
 		return nil, errs.ErrInternal.WithMessage("Failed to marshal event payload").WithRootErr(err)
 	}

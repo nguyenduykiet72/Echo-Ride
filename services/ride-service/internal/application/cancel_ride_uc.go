@@ -6,7 +6,6 @@ import (
 	"echo-ride/services/ride-service/internal/domain"
 	"encoding/json"
 	"errors"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -89,17 +88,12 @@ func (c *canceledRideUC) Execute(ctx context.Context, rideID uuid.UUID, actorID 
 		driverIDStr = ride.DriverID.String()
 	}
 
-	payload := domain.RideEventPayload{
-		EventID:   uuid.New().String(),
-		EventType: domain.EventTypeRideCancelled,
-		Timestamp: time.Now().Format(time.RFC3339),
-		Data: map[string]interface{}{
-			"ride_id":      rideID.String(),
-			"rider_id":     ride.RiderID.String(),
-			"driver_id":    driverIDStr,
-			"status":       string(domain.RideStatusCancelled),
-			"cancelled_by": string(cancelledBy),
-		},
+	payload := map[string]interface{}{
+		"ride_id":      rideID.String(),
+		"rider_id":     ride.RiderID.String(),
+		"driver_id":    driverIDStr,
+		"status":       string(domain.RideStatusCancelled),
+		"cancelled_by": string(cancelledBy),
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {

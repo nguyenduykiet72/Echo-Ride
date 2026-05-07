@@ -18,15 +18,11 @@ import (
 )
 
 // IncomingKafkaEvent mirrors the envelope produced by matching-service publisher
-// and the Debezium relay. EventPayload is kept as RawMessage because:
-//   - matching-service publishes it as a JSON object (e.g. {"ride_id":"..."})
-//   - Debezium-routed outbox events publish it as a JSON string (double-encoded)
-//
-// The handler decides how to decode based on event type.
+// and the Debezium relay. EventPayload is a JSON-encoded string in both paths.
 type IncomingKafkaEvent struct {
 	EventID      string            `json:"event_id"`
 	EventType    domain.EventType  `json:"event_type"`
-	EventPayload json.RawMessage   `json:"event_payload"`
+	EventPayload string            `json:"event_payload"`
 	TraceContext map[string]string `json:"trace_context,omitempty"`
 }
 
@@ -111,7 +107,7 @@ func (c *RideConsumer) processMessage(ctx context.Context, m kafka.Message) {
 func (c *RideConsumer) handleMatchingFailed(ctx context.Context, m kafka.Message, event IncomingKafkaEvent) {
 	payload, err := decodeFailedPayload(event.EventPayload)
 	if err != nil {
-		c.logger.Error("Failed to parse RIDE_FAILED payload", zap.Error(err), zap.ByteString("payload", event.EventPayload))
+		c.logger.Error("Failed to parse RIDE_FAILED payload", zap.Error(err), zap.String("payload", event.EventPayload))
 		c.commit(ctx, m)
 		return
 	}
@@ -153,16 +149,9 @@ func (c *RideConsumer) handleMatchingFailed(ctx context.Context, m kafka.Message
 	c.logger.Info("Marked ride as FAILED", zap.String("ride_id", rideID.String()))
 }
 
-func decodeFailedPayload(raw json.RawMessage) (MatchingFailedPayload, error) {
+func decodeFailedPayload(raw string) (MatchingFailedPayload, error) {
 	var p MatchingFailedPayload
-	if err := json.Unmarshal(raw, &p); err == nil && p.RideID != "" {
-		return p, nil
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return p, err
-	}
-	if err := json.Unmarshal([]byte(s), &p); err != nil {
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
 		return p, err
 	}
 	return p, nil

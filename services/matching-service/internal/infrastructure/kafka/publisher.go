@@ -51,7 +51,7 @@ func (m *matchingPublisher) publish(ctx context.Context, key string, eventType d
 	event := IncomingKafkaEvent{
 		EventID:      fmt.Sprintf("%d", time.Now().UnixNano()), // Unique event ID, can be improved with UUID
 		EventType:    eventType,
-		EventPayload: payloadBytes,
+		EventPayload: string(payloadBytes),
 	}
 	eventBytes, _ := json.Marshal(event)
 
