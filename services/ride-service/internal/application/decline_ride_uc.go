@@ -5,7 +5,6 @@ import (
 	"echo-ride/pkg/errs"
 	"echo-ride/services/ride-service/internal/domain"
 	"encoding/json"
-	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -40,15 +39,10 @@ func (d *declineRideUC) Execute(ctx context.Context, rideID, driverID uuid.UUID)
 	ctx, span := d.tracer.Start(ctx, "UseCase.DeclineRide")
 	defer span.End()
 
-	payload := domain.RideEventPayload{
-		EventID:   uuid.New().String(),
-		EventType: domain.EventTypeRideDeclined,
-		Timestamp: time.Now().Format(time.RFC3339),
-		Data: map[string]interface{}{
-			"ride_id":      rideID.String(),
-			"driver_id":    driverID.String(),
-			"cancelled_by": "DRIVER",
-		},
+	payload := map[string]interface{}{
+		"ride_id":      rideID.String(),
+		"driver_id":    driverID.String(),
+		"cancelled_by": "DRIVER",
 	}
 
 	payloadBytes, err := json.Marshal(payload)

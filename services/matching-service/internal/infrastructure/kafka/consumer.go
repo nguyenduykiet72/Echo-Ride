@@ -22,18 +22,22 @@ type IncomingKafkaEvent struct {
 	EventAggregateID   string                 `json:"event_aggregate_id"`
 	EventAggregateType string                 `json:"event_aggregate_type"`
 	EventType          domain.RideEventStatus `json:"event_type"`
-	EventPayload       json.RawMessage        `json:"event_payload"`
+	EventPayload       string                 `json:"event_payload"`
 	EventStatus        string                 `json:"event_status"`
 	TraceContext       map[string]string      `json:"trace_context"`
 }
 
 type RideRequestedPayload struct {
-	ID         string  `json:"id"`
-	RiderID    string  `json:"rider_id"`
-	PickupLat  float64 `json:"pickup_lat"`
-	PickupLng  float64 `json:"pickup_lng"`
-	DropoffLat float64 `json:"dropoff_lat"`
-	DropoffLng float64 `json:"dropoff_lng"`
+	ID        string  `json:"id"`
+	RiderID   string  `json:"rider_id"`
+	PickupLat float64 `json:"pickup_lat"`
+	PickupLng float64 `json:"pickup_lng"`
+}
+
+type CancelledPayload struct {
+	RideID      string `json:"ride_id"`
+	DriverID    string `json:"driver_id"`
+	CancelledBy string `json:"cancelled_by"`
 }
 
 type RideConsumer struct {
@@ -44,23 +48,6 @@ type RideConsumer struct {
 	handleCancelledUC application.HandleCancelledUseCase
 	dispatchRepo      domain.DispatchRepository
 	logger            *zap.Logger
-}
-
-type RideRequestedWrapper struct {
-	Data struct {
-		ID        string  `json:"id"`
-		RiderID   string  `json:"rider_id"`
-		PickupLat float64 `json:"pickup_lat"`
-		PickupLng float64 `json:"pickup_lng"`
-	} `json:"data"`
-}
-
-type CancelledPayload struct {
-	Data struct {
-		RideID      string `json:"ride_id"`
-		DriverID    string `json:"driver_id"`
-		CancelledBy string `json:"cancelled_by"`
-	} `json:"data"`
 }
 
 func NewRideConsumer(
@@ -223,21 +210,21 @@ func (c *RideConsumer) handleRideRequested(ctx context.Context, m kafka.Message,
 	}
 
 	domainEvent := domain.RideRequestEvent{
-		RideID:    payload.Data.ID,
-		RiderID:   payload.Data.RiderID,
-		PickupLat: payload.Data.PickupLat,
-		PickupLng: payload.Data.PickupLng,
+		RideID:    payload.ID,
+		RiderID:   payload.RiderID,
+		PickupLat: payload.PickupLat,
+		PickupLng: payload.PickupLng,
 	}
 
 	if err := c.retryHandler(ctx, "ProcessMatching", func() error {
 		return c.uc.Execute(ctx, domainEvent)
 	}); err != nil {
-		c.logger.Error("Failed to process REQUESTED after retries", zap.Error(err), zap.String("ride_id", payload.Data.ID))
+		c.logger.Error("Failed to process REQUESTED after retries", zap.Error(err), zap.String("ride_id", payload.ID))
 		c.sendToDLQ(ctx, m, err.Error())
 		return err
 	}
 
-	c.logger.Info("Processed REQUESTED event", zap.String("ride_id", payload.Data.ID))
+	c.logger.Info("Processed REQUESTED event", zap.String("ride_id", payload.ID))
 	return nil
 }
 
@@ -263,46 +250,32 @@ func (c *RideConsumer) handleRideCancelled(ctx context.Context, m kafka.Message,
 		return err
 	}
 
-	cancelledBy := payload.Data.CancelledBy
+	cancelledBy := payload.CancelledBy
 	if cancelledBy == "" {
 		c.logger.Warn("CANCELLED event missing cancelled_by; defaulting to RIDER",
-			zap.String("ride_id", payload.Data.RideID))
+			zap.String("ride_id", payload.RideID))
 		cancelledBy = string(domain.CancelledByRider)
 	}
 
-	if err := c.handleCancelledUC.Execute(ctx, payload.Data.RideID, payload.Data.DriverID, domain.CancelledBy(cancelledBy)); err != nil {
-		c.logger.Error("Failed to handle CANCELLED", zap.Error(err), zap.String("ride_id", payload.Data.RideID))
+	if err := c.handleCancelledUC.Execute(ctx, payload.RideID, payload.DriverID, domain.CancelledBy(cancelledBy)); err != nil {
+		c.logger.Error("Failed to handle CANCELLED", zap.Error(err), zap.String("ride_id", payload.RideID))
 		c.sendToDLQ(ctx, m, err.Error())
 		return err
 	}
 	return nil
 }
 
-func decodeRequestedPayload(raw json.RawMessage) (RideRequestedWrapper, error) {
-	var p RideRequestedWrapper
-	if err := json.Unmarshal(raw, &p); err == nil && p.Data.ID != "" {
-		return p, nil
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return p, err
-	}
-	if err := json.Unmarshal([]byte(s), &p); err != nil {
+func decodeRequestedPayload(raw string) (RideRequestedPayload, error) {
+	var p RideRequestedPayload
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
 		return p, err
 	}
 	return p, nil
 }
 
-func decodeCancelledPayload(raw json.RawMessage) (CancelledPayload, error) {
+func decodeCancelledPayload(raw string) (CancelledPayload, error) {
 	var p CancelledPayload
-	if err := json.Unmarshal(raw, &p); err == nil && p.Data.RideID != "" {
-		return p, nil
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return p, err
-	}
-	if err := json.Unmarshal([]byte(s), &p); err != nil {
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
 		return p, err
 	}
 	return p, nil

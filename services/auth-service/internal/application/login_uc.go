@@ -17,8 +17,7 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	AccessToken string           `json:"accessToken"`
-	Identity    *domain.Identity `json:"user_info"`
+	AccessToken string `json:"accessToken"`
 }
 
 type LoginUseCase interface {
@@ -65,6 +64,5 @@ func (l *loginUC) Execute(ctx context.Context, req LoginRequest) (*LoginResponse
 
 	return &LoginResponse{
 		AccessToken: token,
-		Identity:    identity,
 	}, nil
 }

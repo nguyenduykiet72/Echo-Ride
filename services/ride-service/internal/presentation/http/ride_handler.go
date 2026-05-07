@@ -14,13 +14,15 @@ import (
 )
 
 type RideHandler struct {
-	createRideUC application.CreateRideUseCase
-	updateRideUC application.UpdateRideUseCase
-	getRideUC    application.GetRideUseCase
-	acceptRideUC application.AcceptRideUseCase
-	updateTripUC application.UpdateTripStatusUseCase
-	cancelRideUC application.CanceledRideUC
-	declineRideUC application.DeclineRideUC
+	createRideUC   application.CreateRideUseCase
+	updateRideUC   application.UpdateRideUseCase
+	getRideUC      application.GetRideUseCase
+	acceptRideUC   application.AcceptRideUseCase
+	arriveRideUC   application.ArriveRideUseCase
+	startTripUC    application.StartTripUseCase
+	completeTripUC application.CompleteTripUseCase
+	cancelRideUC   application.CanceledRideUC
+	declineRideUC  application.DeclineRideUC
 }
 
 func NewRideHandler(
@@ -29,18 +31,22 @@ func NewRideHandler(
 	updateRideUC application.UpdateRideUseCase,
 	getRideUC application.GetRideUseCase,
 	acceptRideUC application.AcceptRideUseCase,
-	updateTripUC application.UpdateTripStatusUseCase,
+	arriveRideUC application.ArriveRideUseCase,
+	startTripUC application.StartTripUseCase,
+	completeTripUC application.CompleteTripUseCase,
 	cancelRideUC application.CanceledRideUC,
 	declineRideUC application.DeclineRideUC,
 ) {
 	handler := &RideHandler{
-		createRideUC:  createRideUC,
-		updateRideUC:  updateRideUC,
-		getRideUC:     getRideUC,
-		acceptRideUC:  acceptRideUC,
-		updateTripUC:  updateTripUC,
-		cancelRideUC:  cancelRideUC,
-		declineRideUC: declineRideUC,
+		createRideUC:   createRideUC,
+		updateRideUC:   updateRideUC,
+		getRideUC:      getRideUC,
+		acceptRideUC:   acceptRideUC,
+		arriveRideUC:   arriveRideUC,
+		startTripUC:    startTripUC,
+		completeTripUC: completeTripUC,
+		cancelRideUC:   cancelRideUC,
+		declineRideUC:  declineRideUC,
 	}
 
 	v1 := e.Group("/api/v1/rides")
@@ -52,7 +58,9 @@ func NewRideHandler(
 	v1.GET("/:id", handler.GetByID)
 	v1.PATCH("/:id/accept", handler.AcceptRide, middlewares.RequireRole("DRIVER"))
 	v1.PATCH("/:id/status", handler.UpdateStatus)
-	v1.PATCH("/:id/trip-status", handler.UpdateTripStatus, middlewares.RequireRole("DRIVER"))
+	v1.PATCH("/:id/arrive", handler.ArriveRide, middlewares.RequireRole("DRIVER"))
+	v1.PATCH("/:id/start", handler.StartTrip, middlewares.RequireRole("DRIVER"))
+	v1.PATCH("/:id/complete", handler.CompleteTrip, middlewares.RequireRole("DRIVER"))
 	v1.PATCH("/:id/cancel", handler.CancelRide, middlewares.RequireRole("RIDER", "DRIVER"))
 	v1.PATCH("/:id/decline", handler.DeclineRide, middlewares.RequireRole("DRIVER"))
 }
@@ -203,30 +211,86 @@ func (h *RideHandler) UpdateStatus(ctx *echo.Context) error {
 	return response.WriteSuccess(ctx, http.StatusOK, ride, "Ride status updated")
 }
 
-func (h *RideHandler) UpdateTripStatus(ctx *echo.Context) error {
-	rideIDStr := ctx.Param("id")
-	rideID, err := uuid.Parse(rideIDStr)
+func (h *RideHandler) ArriveRide(ctx *echo.Context) error {
+	rideID, err := uuid.Parse(ctx.Param("id"))
 	if err != nil {
-		return errs.ErrInvalidInput.WithMessage("Invalid ride ID")
+		return errs.ErrBadRequest.WithMessage("Invalid ride ID").WithRootErr(err)
 	}
 
-	var req updateTripRequest
+	var req arriveRideRequest
 	if err := ctx.Bind(&req); err != nil {
-		return errs.ErrInvalidInput.WithRootErr(err)
+		return errs.ErrBadRequest.WithMessage("Invalid request body").WithRootErr(err)
 	}
 	if err := ctx.Validate(&req); err != nil {
-		return errs.ErrInvalidInput.WithRootErr(err)
+		return errs.ErrBadRequest.WithMessage("Validation failed").WithRootErr(err)
 	}
 
-	driverID, _ := uuid.Parse(req.DriverID)
-	status := domain.RideStatus(req.Status)
-
-	ride, err := h.updateTripUC.Execute(ctx.Request().Context(), rideID, driverID, status)
+	driverID, err := driverIDFromContext(ctx)
 	if err != nil {
 		return err
 	}
 
-	return response.WriteSuccess(ctx, http.StatusOK, ride, "Trip status updated successfully")
+	if err := h.arriveRideUC.Execute(ctx.Request().Context(), application.ArriveRideCommand{
+		RideID:    rideID,
+		DriverID:  driverID,
+		DriverLat: req.Lat,
+		DriverLng: req.Lng,
+	}); err != nil {
+		return err
+	}
+
+	return response.WriteSuccess(ctx, http.StatusOK, map[string]string{
+		"ride_id": rideID.String(),
+		"status":  string(domain.EventTypeDriverArrived),
+	}, "Driver arrival recorded")
+}
+
+func (h *RideHandler) StartTrip(ctx *echo.Context) error {
+	rideID, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		return errs.ErrBadRequest.WithMessage("Invalid ride ID").WithRootErr(err)
+	}
+	driverID, err := driverIDFromContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	ride, err := h.startTripUC.Execute(ctx.Request().Context(), rideID, driverID)
+	if err != nil {
+		return err
+	}
+
+	return response.WriteSuccess(ctx, http.StatusOK, ride, "Trip started")
+}
+
+func (h *RideHandler) CompleteTrip(ctx *echo.Context) error {
+	rideID, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		return errs.ErrBadRequest.WithMessage("Invalid ride ID").WithRootErr(err)
+	}
+	driverID, err := driverIDFromContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	ride, err := h.completeTripUC.Execute(ctx.Request().Context(), rideID, driverID)
+	if err != nil {
+		return err
+	}
+
+	return response.WriteSuccess(ctx, http.StatusOK, ride, "Trip completed")
+}
+
+func driverIDFromContext(ctx *echo.Context) (uuid.UUID, error) {
+	userIDStr, ok := ctx.Get("userId").(string)
+	if !ok || userIDStr == "" {
+		return uuid.Nil, errs.ErrUnauthorized.WithMessage("Missing user context")
+	}
+	driverID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return uuid.Nil, errs.ErrUnauthorized.WithMessage("Invalid user id").WithRootErr(err)
+	}
+	return driverID, nil
 }
 
 func (h *RideHandler) CancelRide(ctx *echo.Context) error {
