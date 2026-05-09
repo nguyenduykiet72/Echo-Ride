@@ -1,7 +1,7 @@
 # Go-EchoRide
 
 Go-EchoRide is a Go-based microservices backend for a ride-hailing platform.  
-It combines REST APIs, WebSocket communication, gRPC, and event-driven workflows to handle authentication, ride lifecycle management, real-time location updates, and driver-rider matching.
+It combines REST APIs, WebSocket communication, gRPC, and event-driven workflows to handle authentication, user profiles (roles and account status), ride lifecycle management, real-time location updates, and driver-rider matching.
 
 ## Project Scope
 
@@ -27,7 +27,10 @@ It combines REST APIs, WebSocket communication, gRPC, and event-driven workflows
 ### Core Services
 
 - `services/auth-service`  
-  Handles authentication flows and JWT issuance.
+  Handles credentials (identities, password hashes), refresh-token sessions, JWT issuance, and Redis-backed access-token revocation. At login/refresh it calls `user-service` over gRPC for role and account status before embedding claims in the JWT.
+
+- `services/user-service`  
+  Owns user profile data and is the source of truth for `role` and `account_status`. Exposes REST (`/api/v1/users/me`, admin role/status updates), gRPC (`GetUserAuthInfo` for `auth-service`), and consumes Kafka events such as `IDENTITY_CREATED` to upsert rows in `t_users`.
 
 - `services/ride-service`  
   Manages ride domain logic and consumes/publishes ride events.
@@ -62,6 +65,7 @@ Defined in `infra/development/docker/docker-compose.dev.yml`:
 ├── pkg/
 ├── services/
 │   ├── auth-service/
+│   ├── user-service/
 │   ├── ride-service/
 │   ├── location-service/
 │   ├── matching-service/
@@ -116,6 +120,7 @@ From the repository root:
 
 ```bash
 make run service=auth-service
+make run service=user-service
 make run service=ride-service
 make run service=location-service
 make run service=matching-service
@@ -139,12 +144,14 @@ make build-all
 Migration targets are currently available for:
 
 - `services/auth-service`
+- `services/user-service`
 - `services/ride-service`
 
 Apply migrations:
 
 ```bash
 make migrate-up service=auth-service
+make migrate-up service=user-service
 make migrate-up service=ride-service
 ```
 
@@ -158,10 +165,12 @@ make migrate-create service=ride-service name=add_new_table
 
 The script `scripts/apisix-script` bootstraps:
 
-- Public auth route: `/api/v1/auth/*`
-- JWT consumer in APISIX
-- Protected ride route: `/api/v1/rides*`
-- WebSocket proxy route: `/ws*`
+- Auth route: `/api/v1/auth/*` (upstream `auth-service`)
+- JWT consumer in APISIX (must match the `key` claim in tokens issued by `auth-service`)
+- Protected ride route: `/api/v1/rides*` with JWT + header injection for `X-User-Id` / `X-User-Role`
+- WebSocket proxy route: `/ws*` (upstream `location-service`)
+
+For routes that also cover `user-service`, split public auth (`register` / `login` / `refresh`) vs JWT-protected paths, and the same header injection pattern, use `infra/development/apisix/apisix_admin_setup.sh` (see `infra/development/apisix/routes/` and `inject_user_headers.lua`; requires `jq` and `envsubst`).
 
 Usage:
 
@@ -175,6 +184,8 @@ bash scripts/apisix-script
 ### Application services (`config.dev.yml`)
 
 - Auth Service: `8114`
+- User Service HTTP: `8115`
+- User Service gRPC: `9115`
 - Ride Service: `8111`
 - Location Service HTTP: `8112`
 - Location Service gRPC: `50052`
@@ -197,10 +208,16 @@ bash scripts/apisix-script
 ## Observability
 
 - Shared tracing is initialized via `pkg/tracing`.
-- Key services (including `auth-service`, `ride-service`, and `location-service`) export traces to Jaeger.
+- Key services (including `auth-service`, `user-service`, `ride-service`, and `location-service`) export traces to Jaeger.
 - Jaeger UI: `http://localhost:16686`
 
 ## Health and Verification
+
+User service health endpoint:
+
+```bash
+curl http://localhost:8115/health
+```
 
 Matching service health endpoint:
 
@@ -219,6 +236,7 @@ curl -H "X-API-KEY: <apisix-admin-key>" http://localhost:9180/apisix/admin/route
 - Development configuration files are located at `services/*/config/config.dev.yml`.
 - If services run on host while dependencies run in Docker, verify host/port values carefully.
 - Keep JWT secrets aligned between `auth-service` and APISIX (`APISIX_JWT_SECRET`).
+- `auth-service` must reach `user-service` gRPC at `AUTH_USER_SERVICE_GRPC_ADDR` (default `localhost:9115`) so login and refresh can load role and status.
 
 ## Roadmap Suggestions
 
