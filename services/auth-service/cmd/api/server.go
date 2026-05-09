@@ -5,9 +5,7 @@ import (
 	"echo-ride/pkg/response"
 	"echo-ride/services/auth-service/config"
 	"echo-ride/services/auth-service/internal/application"
-	"echo-ride/services/auth-service/internal/infrastructure/repository"
 	authHttp "echo-ride/services/auth-service/internal/presentation/http"
-	"echo-ride/services/auth-service/pkg/jwt"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
@@ -26,27 +24,28 @@ func (cv *customValidator) Validate(i interface{}) error {
 }
 
 type ServerConfig struct {
-	DBPool *pgxpool.Pool
-	Config *config.Config
-	Logger *zap.Logger
+	DBPool     *pgxpool.Pool
+	Config     *config.Config
+	Logger     *zap.Logger
+	RegisterUC application.RegisterUseCase
+	LoginUC    application.LoginUseCase
+	RefreshUC  application.RefreshUseCase
+	LogoutUC   application.LogoutUseCase
+	JWTAuth    echo.MiddlewareFunc
 }
 
-func newServer(config ServerConfig) *echo.Echo {
+func newServer(cfg ServerConfig) *echo.Echo {
 	e := echo.New()
 	e.Validator = &customValidator{v: validator.New()}
 	e.Use(middleware.Recover())
 	e.Use(middlewares.OTelMiddleware("auth-service"))
-	e.HTTPErrorHandler = response.CustomHTTPErrorHandler(config.Logger)
+	e.HTTPErrorHandler = response.CustomHTTPErrorHandler(cfg.Logger)
 
 	e.GET("/health", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok", "service": "auth-service"})
 	})
 
-	identityRepo := repository.NewIdentityRepository(config.DBPool)
-	tokenMaker := jwt.NewTokenMaker(config.Config.JWT.SecretKey)
-	loginUC := application.NewLoginUseCase(identityRepo, tokenMaker, config.Logger)
-	registerUC := application.NewRegisterUseCase(identityRepo, config.Logger)
-	authHttp.NewAuthHandler(e, registerUC, loginUC)
+	authHttp.NewAuthHandler(e, cfg.RegisterUC, cfg.LoginUC, cfg.RefreshUC, cfg.LogoutUC, cfg.JWTAuth)
 
 	return e
 }

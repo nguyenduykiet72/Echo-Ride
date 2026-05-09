@@ -13,7 +13,8 @@ database:
 kafka:
   brokers:
     - "localhost:9092"
-  topic: "ride.events"
+  topic: "auth.events"
+  user_topic: "user.events"
 
 jaeger:
  service_host: "localhost"
@@ -21,4 +22,13 @@ jaeger:
 
 jwt:
     secret: "mysecretkey"
-    expiration_time: 3600 # 1 hour in seconds
+    access_token_ttl_min: 15
+    refresh_token_ttl_hours: 720
+
+redis:
+    addr: "localhost:6379"
+    password: ""
+    db: 0
+
+user_service:
+    grpc_addr: "localhost:9115"

@@ -1,0 +1,10 @@
+{
+  "username": "echo_ride",
+  "plugins": {
+    "jwt-auth": {
+      "key": "echo_ride",
+      "secret": "${JWT_SECRET}",
+      "algorithm": "HS256"
+    }
+  }
+}

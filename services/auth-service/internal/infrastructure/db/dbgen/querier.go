@@ -6,13 +6,24 @@ package dbgen
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	CreateIdentity(ctx context.Context, arg CreateIdentityParams) (TIdentity, error)
+	CreateOutboxEvent(ctx context.Context, arg CreateOutboxEventParams) (TOutboxEvent, error)
+	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (TRefreshToken, error)
 	GetIdentityByEmail(ctx context.Context, identityEmail string) (TIdentity, error)
+	GetIdentityByID(ctx context.Context, identityID pgtype.UUID) (TIdentity, error)
 	GetIdentityByPhone(ctx context.Context, identityPhone string) (TIdentity, error)
-	UpdateIdentityStatus(ctx context.Context, arg UpdateIdentityStatusParams) (TIdentity, error)
+	GetPendingOutboxEvents(ctx context.Context, limit int32) ([]TOutboxEvent, error)
+	GetRefreshTokenByHash(ctx context.Context, refreshTokenHash string) (TRefreshToken, error)
+	MarkOutboxEventAsFailed(ctx context.Context, eventID pgtype.UUID) error
+	MarkOutboxEventAsPublished(ctx context.Context, eventID pgtype.UUID) error
+	RevokeAllRefreshTokensByIdentity(ctx context.Context, refreshTokenIdentityID pgtype.UUID) error
+	RevokeRefreshTokenByHash(ctx context.Context, refreshTokenHash string) error
+	TouchRefreshTokenLastUsed(ctx context.Context, refreshTokenHash string) error
 }
 
 var _ Querier = (*Queries)(nil)
