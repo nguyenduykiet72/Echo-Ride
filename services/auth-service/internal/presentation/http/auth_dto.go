@@ -8,6 +8,15 @@ type registerRequest struct {
 }
 
 type loginRequest struct {
-	Phone    string `json:"phone" validate:"required"`
-	Password string `json:"password" validate:"required"`
+	Phone      string `json:"phone" validate:"required"`
+	Password   string `json:"password" validate:"required"`
+	DeviceInfo string `json:"deviceInfo" validate:"omitempty,max=255"`
+}
+
+type refreshRequest struct {
+	RefreshToken string `json:"refreshToken" validate:"required"`
+}
+
+type logoutRequest struct {
+	RefreshToken string `json:"refreshToken" validate:"required"`
 }

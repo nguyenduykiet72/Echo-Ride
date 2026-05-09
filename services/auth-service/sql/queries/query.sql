@@ -1,13 +1,18 @@
 -- name: CreateIdentity :one
 INSERT INTO t_identities (
+    identity_id,
     identity_email,
     identity_phone,
-    identity_password_hash,
-    identity_role
+    identity_password_hash
 ) VALUES (
     $1, $2, $3, $4
 )
 RETURNING *;
+
+-- name: GetIdentityByID :one
+SELECT * FROM t_identities
+WHERE identity_id = $1
+LIMIT 1;
 
 -- name: GetIdentityByEmail :one
 SELECT * FROM t_identities
@@ -18,9 +23,3 @@ LIMIT 1;
 SELECT * FROM t_identities
 WHERE identity_phone = $1
 LIMIT 1;
-
--- name: UpdateIdentityStatus :one
-UPDATE t_identities
-SET identity_status = $2, identity_updated_at = NOW()
-WHERE identity_id = $1
-RETURNING *;

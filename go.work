@@ -7,4 +7,5 @@ use (
 	./services/matching-service
 	./services/payment-service
 	./services/ride-service
+	./services/user-service
 )

@@ -13,29 +13,29 @@ import (
 
 const createIdentity = `-- name: CreateIdentity :one
 INSERT INTO t_identities (
+    identity_id,
     identity_email,
     identity_phone,
-    identity_password_hash,
-    identity_role
+    identity_password_hash
 ) VALUES (
     $1, $2, $3, $4
 )
-RETURNING identity_id, identity_email, identity_phone, identity_password_hash, identity_role, identity_status, identity_created_at, identity_updated_at
+RETURNING identity_id, identity_email, identity_phone, identity_password_hash, identity_created_at, identity_updated_at
 `
 
 type CreateIdentityParams struct {
+	IdentityID           pgtype.UUID `json:"identity_id"`
 	IdentityEmail        string      `json:"identity_email"`
 	IdentityPhone        string      `json:"identity_phone"`
 	IdentityPasswordHash string      `json:"identity_password_hash"`
-	IdentityRole         AccountRole `json:"identity_role"`
 }
 
 func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) (TIdentity, error) {
 	row := q.db.QueryRow(ctx, createIdentity,
+		arg.IdentityID,
 		arg.IdentityEmail,
 		arg.IdentityPhone,
 		arg.IdentityPasswordHash,
-		arg.IdentityRole,
 	)
 	var i TIdentity
 	err := row.Scan(
@@ -43,8 +43,6 @@ func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) 
 		&i.IdentityEmail,
 		&i.IdentityPhone,
 		&i.IdentityPasswordHash,
-		&i.IdentityRole,
-		&i.IdentityStatus,
 		&i.IdentityCreatedAt,
 		&i.IdentityUpdatedAt,
 	)
@@ -52,7 +50,7 @@ func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) 
 }
 
 const getIdentityByEmail = `-- name: GetIdentityByEmail :one
-SELECT identity_id, identity_email, identity_phone, identity_password_hash, identity_role, identity_status, identity_created_at, identity_updated_at FROM t_identities
+SELECT identity_id, identity_email, identity_phone, identity_password_hash, identity_created_at, identity_updated_at FROM t_identities
 WHERE identity_email = $1
 LIMIT 1
 `
@@ -65,8 +63,26 @@ func (q *Queries) GetIdentityByEmail(ctx context.Context, identityEmail string) 
 		&i.IdentityEmail,
 		&i.IdentityPhone,
 		&i.IdentityPasswordHash,
-		&i.IdentityRole,
-		&i.IdentityStatus,
+		&i.IdentityCreatedAt,
+		&i.IdentityUpdatedAt,
+	)
+	return i, err
+}
+
+const getIdentityByID = `-- name: GetIdentityByID :one
+SELECT identity_id, identity_email, identity_phone, identity_password_hash, identity_created_at, identity_updated_at FROM t_identities
+WHERE identity_id = $1
+LIMIT 1
+`
+
+func (q *Queries) GetIdentityByID(ctx context.Context, identityID pgtype.UUID) (TIdentity, error) {
+	row := q.db.QueryRow(ctx, getIdentityByID, identityID)
+	var i TIdentity
+	err := row.Scan(
+		&i.IdentityID,
+		&i.IdentityEmail,
+		&i.IdentityPhone,
+		&i.IdentityPasswordHash,
 		&i.IdentityCreatedAt,
 		&i.IdentityUpdatedAt,
 	)
@@ -74,7 +90,7 @@ func (q *Queries) GetIdentityByEmail(ctx context.Context, identityEmail string) 
 }
 
 const getIdentityByPhone = `-- name: GetIdentityByPhone :one
-SELECT identity_id, identity_email, identity_phone, identity_password_hash, identity_role, identity_status, identity_created_at, identity_updated_at FROM t_identities
+SELECT identity_id, identity_email, identity_phone, identity_password_hash, identity_created_at, identity_updated_at FROM t_identities
 WHERE identity_phone = $1
 LIMIT 1
 `
@@ -87,36 +103,6 @@ func (q *Queries) GetIdentityByPhone(ctx context.Context, identityPhone string) 
 		&i.IdentityEmail,
 		&i.IdentityPhone,
 		&i.IdentityPasswordHash,
-		&i.IdentityRole,
-		&i.IdentityStatus,
-		&i.IdentityCreatedAt,
-		&i.IdentityUpdatedAt,
-	)
-	return i, err
-}
-
-const updateIdentityStatus = `-- name: UpdateIdentityStatus :one
-UPDATE t_identities
-SET identity_status = $2, identity_updated_at = NOW()
-WHERE identity_id = $1
-RETURNING identity_id, identity_email, identity_phone, identity_password_hash, identity_role, identity_status, identity_created_at, identity_updated_at
-`
-
-type UpdateIdentityStatusParams struct {
-	IdentityID     pgtype.UUID   `json:"identity_id"`
-	IdentityStatus AccountStatus `json:"identity_status"`
-}
-
-func (q *Queries) UpdateIdentityStatus(ctx context.Context, arg UpdateIdentityStatusParams) (TIdentity, error) {
-	row := q.db.QueryRow(ctx, updateIdentityStatus, arg.IdentityID, arg.IdentityStatus)
-	var i TIdentity
-	err := row.Scan(
-		&i.IdentityID,
-		&i.IdentityEmail,
-		&i.IdentityPhone,
-		&i.IdentityPasswordHash,
-		&i.IdentityRole,
-		&i.IdentityStatus,
 		&i.IdentityCreatedAt,
 		&i.IdentityUpdatedAt,
 	)

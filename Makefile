@@ -11,7 +11,7 @@
 #		$(PROTO_SRC)
 #
 
-SERVICES=ride-service auth-service location-service payment-service
+SERVICES=ride-service auth-service user-service location-service payment-service
 
 .PHONY: help
 

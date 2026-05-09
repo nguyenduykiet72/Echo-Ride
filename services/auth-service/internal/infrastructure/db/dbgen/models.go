@@ -5,105 +5,39 @@
 package dbgen
 
 import (
-	"database/sql/driver"
-	"fmt"
-
 	"github.com/jackc/pgx/v5/pgtype"
 )
-
-type AccountRole string
-
-const (
-	AccountRoleRIDER  AccountRole = "RIDER"
-	AccountRoleDRIVER AccountRole = "DRIVER"
-	AccountRoleADMIN  AccountRole = "ADMIN"
-)
-
-func (e *AccountRole) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = AccountRole(s)
-	case string:
-		*e = AccountRole(s)
-	default:
-		return fmt.Errorf("unsupported scan type for AccountRole: %T", src)
-	}
-	return nil
-}
-
-type NullAccountRole struct {
-	AccountRole AccountRole `json:"account_role"`
-	Valid       bool        `json:"valid"` // Valid is true if AccountRole is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullAccountRole) Scan(value interface{}) error {
-	if value == nil {
-		ns.AccountRole, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.AccountRole.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullAccountRole) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.AccountRole), nil
-}
-
-type AccountStatus string
-
-const (
-	AccountStatusACTIVE    AccountStatus = "ACTIVE"
-	AccountStatusBANNED    AccountStatus = "BANNED"
-	AccountStatusSUSPENDED AccountStatus = "SUSPENDED"
-)
-
-func (e *AccountStatus) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = AccountStatus(s)
-	case string:
-		*e = AccountStatus(s)
-	default:
-		return fmt.Errorf("unsupported scan type for AccountStatus: %T", src)
-	}
-	return nil
-}
-
-type NullAccountStatus struct {
-	AccountStatus AccountStatus `json:"account_status"`
-	Valid         bool          `json:"valid"` // Valid is true if AccountStatus is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullAccountStatus) Scan(value interface{}) error {
-	if value == nil {
-		ns.AccountStatus, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.AccountStatus.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullAccountStatus) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.AccountStatus), nil
-}
 
 type TIdentity struct {
 	IdentityID           pgtype.UUID        `json:"identity_id"`
 	IdentityEmail        string             `json:"identity_email"`
 	IdentityPhone        string             `json:"identity_phone"`
 	IdentityPasswordHash string             `json:"identity_password_hash"`
-	IdentityRole         AccountRole        `json:"identity_role"`
-	IdentityStatus       AccountStatus      `json:"identity_status"`
 	IdentityCreatedAt    pgtype.Timestamptz `json:"identity_created_at"`
 	IdentityUpdatedAt    pgtype.Timestamptz `json:"identity_updated_at"`
+}
+
+type TOutboxEvent struct {
+	EventID            pgtype.UUID        `json:"event_id"`
+	EventAggregateID   string             `json:"event_aggregate_id"`
+	EventAggregateType string             `json:"event_aggregate_type"`
+	EventType          string             `json:"event_type"`
+	EventPayload       []byte             `json:"event_payload"`
+	EventStatus        string             `json:"event_status"`
+	EventCreatedAt     pgtype.Timestamptz `json:"event_created_at"`
+	EventUpdatedAt     pgtype.Timestamptz `json:"event_updated_at"`
+	EventPublishedAt   pgtype.Timestamptz `json:"event_published_at"`
+}
+
+type TRefreshToken struct {
+	RefreshTokenID         pgtype.UUID        `json:"refresh_token_id"`
+	RefreshTokenIdentityID pgtype.UUID        `json:"refresh_token_identity_id"`
+	RefreshTokenHash       string             `json:"refresh_token_hash"`
+	RefreshTokenDeviceInfo pgtype.Text        `json:"refresh_token_device_info"`
+	RefreshTokenIpAddress  pgtype.Text        `json:"refresh_token_ip_address"`
+	RefreshTokenUserAgent  pgtype.Text        `json:"refresh_token_user_agent"`
+	RefreshTokenExpiresAt  pgtype.Timestamptz `json:"refresh_token_expires_at"`
+	RefreshTokenRevokedAt  pgtype.Timestamptz `json:"refresh_token_revoked_at"`
+	RefreshTokenLastUsedAt pgtype.Timestamptz `json:"refresh_token_last_used_at"`
+	RefreshTokenCreatedAt  pgtype.Timestamptz `json:"refresh_token_created_at"`
 }

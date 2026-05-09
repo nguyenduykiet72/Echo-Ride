@@ -10,5 +10,6 @@ type CustomClaims struct {
 	UserID uuid.UUID `json:"sub"`
 	Role   string    `json:"role"`
 	Status string    `json:"status"`
+	JTI    string    `json:"jti"`
 	jwt.RegisteredClaims
 }

@@ -1,0 +1,4 @@
+{
+  "type": "roundrobin",
+  "nodes": { "${AUTH_HOST}:${AUTH_PORT}": 1 }
+}
